@@ -8,10 +8,15 @@ const ConfigSchema = z.object({
   SCORE_API_URL: z.string().url().default('https://score-api-production.up.railway.app'),
   SCORE_API_KEY: z.string().optional(),
 
-  // freeside agent-gateway
+  // freeside agent-gateway (production path)
   FREESIDE_BASE_URL: z.string().url().default('https://api.freeside.0xhoneyjar.xyz'),
   FREESIDE_API_KEY: z.string().optional(),
   FREESIDE_AGENT_MODEL: z.enum(['cheap', 'fast-code', 'reviewer', 'reasoning', 'architect']).default('reasoning'),
+
+  // anthropic direct (testing path — bypasses freeside; for V0 voice validation
+  // before jani provisions a freeside-agent-gw key)
+  ANTHROPIC_API_KEY: z.string().optional(),
+  ANTHROPIC_MODEL: z.string().default('claude-sonnet-4-6'),
 
   // discord
   DISCORD_WEBHOOK_URL: z.string().url().optional().or(z.literal('')),

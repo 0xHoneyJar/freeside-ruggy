@@ -27,11 +27,32 @@ export interface InvokeResponse {
   meta?: Record<string, unknown>;
 }
 
+/**
+ * Routing:
+ *   STUB_MODE=true            → canned digest (default)
+ *   ANTHROPIC_API_KEY set     → anthropic-direct (V0 testing path)
+ *   FREESIDE_API_KEY set      → freeside agent-gateway (production)
+ */
 export async function invoke(config: Config, req: InvokeRequest): Promise<InvokeResponse> {
   if (config.STUB_MODE) {
     return generateStubDigest(req);
   }
+  if (config.ANTHROPIC_API_KEY) {
+    return invokeAnthropicDirect(config, req);
+  }
+  if (config.FREESIDE_API_KEY) {
+    return invokeFreeside(config, req);
+  }
+  throw new Error(
+    'no LLM provider configured: set STUB_MODE=true, or ANTHROPIC_API_KEY, or FREESIDE_API_KEY',
+  );
+}
 
+/**
+ * Production path — freeside agent-gateway. Routes through model-tier
+ * (cheap/fast-code/reviewer/reasoning/architect), budget accounting, etc.
+ */
+async function invokeFreeside(config: Config, req: InvokeRequest): Promise<InvokeResponse> {
   const url = `${config.FREESIDE_BASE_URL}/api/agents/invoke`;
   const response = await fetch(url, {
     method: 'POST',
@@ -55,6 +76,51 @@ export async function invoke(config: Config, req: InvokeRequest): Promise<Invoke
 
   const data = (await response.json()) as { text: string; usage?: Record<string, unknown> };
   return { text: data.text, meta: data.usage };
+}
+
+/**
+ * Testing path — direct Anthropic Messages API. Bypasses freeside (no
+ * budget accounting, no model-tier routing, no audit trail).
+ *
+ * Use this to validate Ruggy's voice + system prompt while waiting for
+ * jani to provision a freeside-agent-gw key. Switch to invokeFreeside()
+ * for production by clearing ANTHROPIC_API_KEY in env.
+ */
+async function invokeAnthropicDirect(
+  config: Config,
+  req: InvokeRequest,
+): Promise<InvokeResponse> {
+  const url = 'https://api.anthropic.com/v1/messages';
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'x-api-key': config.ANTHROPIC_API_KEY!,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: config.ANTHROPIC_MODEL,
+      max_tokens: 1024,
+      system: req.systemPrompt,
+      messages: [{ role: 'user', content: req.userMessage }],
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`anthropic api error: ${response.status} ${await response.text()}`);
+  }
+
+  const data = (await response.json()) as {
+    content: Array<{ type: string; text?: string }>;
+    usage?: Record<string, unknown>;
+  };
+
+  const text = data.content
+    .filter((c) => c.type === 'text' && c.text)
+    .map((c) => c.text)
+    .join('\n');
+
+  return { text, meta: data.usage };
 }
 
 /**
