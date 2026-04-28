@@ -51,6 +51,29 @@ export interface ScheduleArgs {
   onFire: (req: FireRequest) => Promise<void>;
 }
 
+/**
+ * Per-zone fire lock — prevents concurrent fires for the same zone when
+ * multiple cron tasks (digest/pop-in/weaver) align in time.
+ *
+ * Per codex-rescue F4: scheduler races on zone state when schedules
+ * coincide. Lock per-zone; queued fires drop if already busy.
+ */
+const zoneLocks = new Map<ZoneId, Promise<void>>();
+
+async function withZoneLock(
+  zone: ZoneId,
+  fn: () => Promise<void>,
+  source: string,
+): Promise<void> {
+  if (zoneLocks.has(zone)) {
+    console.log(`scheduler: ${source} for ${zone} dropped — already firing`);
+    return;
+  }
+  const promise = fn().finally(() => zoneLocks.delete(zone));
+  zoneLocks.set(zone, promise);
+  await promise;
+}
+
 export function schedule(args: ScheduleArgs): SchedulerHandles {
   const { config, zones, onFire } = args;
   const tasks: cron.ScheduledTask[] = [];
@@ -73,11 +96,7 @@ export function schedule(args: ScheduleArgs): SchedulerHandles {
         expr,
         async () => {
           for (const zone of zones) {
-            try {
-              await onFire({ zone, postType: 'digest' });
-            } catch (err) {
-              console.error(`scheduler: digest ${zone} failed:`, err);
-            }
+            await withZoneLock(zone, () => onFire({ zone, postType: 'digest' }), 'digest cron');
           }
         },
         { timezone: 'UTC' },
@@ -88,7 +107,7 @@ export function schedule(args: ScheduleArgs): SchedulerHandles {
   // ─── 2. Pop-in random cadence ───────────────────────────────────────
   if (config.POP_IN_ENABLED) {
     const interval = Math.max(1, config.POP_IN_INTERVAL_HOURS);
-    const expr = `0 */${interval} * * *`; // every N hours on the hour
+    const expr = `0 */${interval} * * *`;
 
     handles.popInExpression = expr;
     tasks.push(
@@ -96,16 +115,10 @@ export function schedule(args: ScheduleArgs): SchedulerHandles {
         expr,
         async () => {
           for (const zone of zones) {
-            // Per-zone die-roll
             if (Math.random() > config.POP_IN_PROBABILITY) continue;
-            // Random non-digest, non-weaver type for pop-ins
             const popInTypes: PostType[] = ['micro', 'lore_drop', 'question'];
             const postType = popInTypes[Math.floor(Math.random() * popInTypes.length)]!;
-            try {
-              await onFire({ zone, postType });
-            } catch (err) {
-              console.error(`scheduler: pop-in ${zone}/${postType} failed:`, err);
-            }
+            await withZoneLock(zone, () => onFire({ zone, postType }), `pop-in (${postType})`);
           }
         },
         { timezone: 'UTC' },
@@ -124,11 +137,8 @@ export function schedule(args: ScheduleArgs): SchedulerHandles {
       cron.schedule(
         expr,
         async () => {
-          try {
-            await onFire({ zone: config.WEAVER_PRIMARY_ZONE, postType: 'weaver' });
-          } catch (err) {
-            console.error('scheduler: weaver failed:', err);
-          }
+          const zone = config.WEAVER_PRIMARY_ZONE;
+          await withZoneLock(zone, () => onFire({ zone, postType: 'weaver' }), 'weaver cron');
         },
         { timezone: 'UTC' },
       ),

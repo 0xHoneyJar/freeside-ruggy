@@ -98,6 +98,49 @@ export function calloutFits(digest: ZoneDigest): boolean {
 }
 
 /**
+ * Whether a pop-in (micro / lore_drop / question) has enough signal to
+ * anchor in. Skip pop-ins on truly flat data — don't pop in to say
+ * "still nothing." The keeper move requires SOMETHING to observe.
+ *
+ * Threshold: at least ONE of —
+ *   • a factor multiplier ≥ 1.3 (something moved off baseline)
+ *   • a wallet climbed in rank
+ *   • a spotlight wallet exists
+ *   • factor_trends has 2+ entries (variety to comment on)
+ */
+export function popInFits(digest: ZoneDigest): boolean {
+  const stats = digest.raw_stats;
+  if (stats.spotlight !== null) return true;
+  if (stats.rank_changes.climbed.length > 0) return true;
+  if (stats.factor_trends.some((t) => t.multiplier >= 1.3 || t.multiplier <= 0.7)) return true;
+  if (stats.factor_trends.length >= 2 && stats.total_events >= 50) return true;
+  return false;
+}
+
+/**
+ * Whether a post type fits the data right now. Used by composer to
+ * skip cleanly instead of generating filler.
+ *
+ *   digest    — always fits (writes "quiet week" honest digest if flat)
+ *   weaver    — always fits (uses cross-zone context, can name absence)
+ *   callout   — fits only if calloutFits()
+ *   micro / lore_drop / question — fits if popInFits()
+ */
+export function postTypeFitsData(postType: PostType, digest: ZoneDigest): boolean {
+  switch (postType) {
+    case 'digest':
+    case 'weaver':
+      return true;
+    case 'callout':
+      return calloutFits(digest);
+    case 'micro':
+    case 'lore_drop':
+    case 'question':
+      return popInFits(digest);
+  }
+}
+
+/**
  * Pick a random non-digest post type for a pop-in. Excludes digest
  * (which has its own weekly slot) and callout (only when triggered).
  */

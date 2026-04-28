@@ -26,7 +26,7 @@ import { buildPostPayload, type DigestPayload } from '../format/embed.ts';
 import {
   POST_TYPE_SPECS,
   type PostType,
-  calloutFits,
+  postTypeFitsData,
 } from './post-types.ts';
 
 export interface PostComposeResult {
@@ -44,22 +44,22 @@ export async function composeZonePost(
   zone: ZoneId,
   postType: PostType = 'digest',
 ): Promise<PostComposeResult | null> {
-  // Callout only fires if data warrants it
-  if (postType === 'callout') {
-    const probe = await fetchZoneDigest(config, zone);
-    if (!calloutFits(probe)) {
-      console.log(`[${zone}] callout requested but data doesn't meet threshold — skipping`);
-      return null;
-    }
-  }
-
-  // Weaver needs cross-zone context
+  // Weaver needs cross-zone context — fetch all zones inside that path
   if (postType === 'weaver') {
     return composeWeaverPost(config, zone);
   }
 
-  // Standard zone-local types
+  // Fetch this zone's digest first; gate post-type fit before LLM call.
+  // Per persona "the keeper move" — pop-ins skip on flat data; don't pop
+  // in to say "still nothing." Operator directive 2026-04-28: don't make
+  // ruggy annoying.
   const digest = await fetchZoneDigest(config, zone);
+  if (!postTypeFitsData(postType, digest)) {
+    console.log(
+      `[${zone}/${postType}] data doesn't fit (${POST_TYPE_SPECS[postType].description}) — skipping`,
+    );
+    return null;
+  }
 
   const { systemPrompt, userMessage } = buildPromptPair({
     zoneId: zone,

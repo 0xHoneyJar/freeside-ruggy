@@ -5,6 +5,13 @@ const ConfigSchema = z.object({
   // ─── stub mode ────────────────────────────────────────────────────────
   STUB_MODE: z.string().default('true').transform((v) => v === 'true'),
 
+  // ─── explicit LLM provider (V0.4 — codex-rescue F1: replace implicit
+  // key-presence inference; fail loud if intent is ambiguous) ────────────
+  /** stub | anthropic | freeside | auto (auto = back-compat: anthropic key
+   *  wins → stub → freeside, matching V0.3 behavior). Defaults to 'auto'
+   *  for back-compat; recommend explicit value in production. */
+  LLM_PROVIDER: z.enum(['stub', 'anthropic', 'freeside', 'auto']).default('auto'),
+
   // ─── score-mcp (zerker — production data path) ────────────────────────
   SCORE_API_URL: z.string().url().default('https://score-api-production.up.railway.app'),
   SCORE_API_KEY: z.string().optional(),
@@ -46,8 +53,10 @@ const ConfigSchema = z.object({
   POP_IN_ENABLED: z.string().default('false').transform((v) => v === 'true'),
   /** Hours between pop-in checks (each check rolls a die per zone). */
   POP_IN_INTERVAL_HOURS: z.coerce.number().int().min(1).max(168).default(6),
-  /** Per-zone per-tick probability (0..1) of firing a pop-in. */
-  POP_IN_PROBABILITY: z.coerce.number().min(0).max(1).default(0.3),
+  /** Per-zone per-tick probability (0..1) of firing a pop-in. Default 0.1
+   *  (~1-2 pops/day across 4 zones at 6h ticks). Lowered V0.4 — operator
+   *  feedback: don't make ruggy annoying or too persistent. */
+  POP_IN_PROBABILITY: z.coerce.number().min(0).max(1).default(0.1),
 
   // ─── weaver weekly mid-week (cross-zone) ──────────────────────────────
   WEAVER_ENABLED: z.string().default('false').transform((v) => v === 'true'),

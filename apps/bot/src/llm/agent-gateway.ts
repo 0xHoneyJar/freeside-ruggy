@@ -1,10 +1,18 @@
 /**
- * LLM gateway — three routes:
- *   STUB_MODE=true (no keys)  → canned digest matching ZoneDigest input
- *   ANTHROPIC_API_KEY set     → anthropic-direct (V0 testing path)
- *   FREESIDE_API_KEY set      → freeside agent-gateway (production)
+ * LLM gateway — explicit provider routing (V0.4).
  *
- * Order: anthropic key wins (V0 voice testing); else stub; else freeside.
+ * Per codex-rescue F1: stub-vs-real selection should be EXPLICIT, not
+ * inferred from key presence. LLM_PROVIDER env makes intent legible:
+ *
+ *   LLM_PROVIDER=stub        → canned digest (no LLM call). Fails loud
+ *                              if anyone expected a real call.
+ *   LLM_PROVIDER=anthropic   → Anthropic Messages API direct. Requires
+ *                              ANTHROPIC_API_KEY; throws if missing.
+ *   LLM_PROVIDER=freeside    → freeside agent-gateway. Requires
+ *                              FREESIDE_API_KEY; throws if missing.
+ *   LLM_PROVIDER=auto        → V0.3 back-compat: anthropic key wins,
+ *                              else stub if STUB_MODE, else freeside.
+ *                              Logs the resolved provider on first call.
  */
 
 import type { Config } from '../config.ts';
@@ -25,19 +33,56 @@ export interface InvokeResponse {
   meta?: Record<string, unknown>;
 }
 
+export type ResolvedProvider = 'stub' | 'anthropic' | 'freeside';
+
+let loggedAutoOnce = false;
+
+function resolveProvider(config: Config): ResolvedProvider {
+  switch (config.LLM_PROVIDER) {
+    case 'stub':
+      return 'stub';
+    case 'anthropic':
+      if (!config.ANTHROPIC_API_KEY) {
+        throw new Error('LLM_PROVIDER=anthropic but ANTHROPIC_API_KEY is unset');
+      }
+      return 'anthropic';
+    case 'freeside':
+      if (!config.FREESIDE_API_KEY) {
+        throw new Error('LLM_PROVIDER=freeside but FREESIDE_API_KEY is unset');
+      }
+      return 'freeside';
+    case 'auto': {
+      // V0.3 back-compat: anthropic > stub > freeside
+      const resolved: ResolvedProvider = config.ANTHROPIC_API_KEY
+        ? 'anthropic'
+        : config.STUB_MODE
+          ? 'stub'
+          : config.FREESIDE_API_KEY
+            ? 'freeside'
+            : (() => {
+                throw new Error(
+                  'LLM_PROVIDER=auto: no provider available — set STUB_MODE=true, ANTHROPIC_API_KEY, or FREESIDE_API_KEY',
+                );
+              })();
+      if (!loggedAutoOnce) {
+        console.log(`llm: LLM_PROVIDER=auto resolved to '${resolved}' (set explicitly to silence this notice)`);
+        loggedAutoOnce = true;
+      }
+      return resolved;
+    }
+  }
+}
+
 export async function invoke(config: Config, req: InvokeRequest): Promise<InvokeResponse> {
-  if (config.ANTHROPIC_API_KEY) {
-    return invokeAnthropicDirect(config, req);
+  const provider = resolveProvider(config);
+  switch (provider) {
+    case 'anthropic':
+      return invokeAnthropicDirect(config, req);
+    case 'stub':
+      return generateStubPost(req);
+    case 'freeside':
+      return invokeFreeside(config, req);
   }
-  if (config.STUB_MODE) {
-    return generateStubPost(req);
-  }
-  if (config.FREESIDE_API_KEY) {
-    return invokeFreeside(config, req);
-  }
-  throw new Error(
-    'no LLM provider configured: set STUB_MODE=true, or ANTHROPIC_API_KEY, or FREESIDE_API_KEY',
-  );
 }
 
 async function invokeFreeside(config: Config, req: InvokeRequest): Promise<InvokeResponse> {
