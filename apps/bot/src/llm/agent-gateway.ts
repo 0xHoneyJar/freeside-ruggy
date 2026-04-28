@@ -1,46 +1,28 @@
 /**
- * Freeside agent-gateway HTTP client.
+ * LLM gateway — three routes:
+ *   STUB_MODE=true (no keys)  → canned digest matching ZoneDigest input
+ *   ANTHROPIC_API_KEY set     → anthropic-direct (V0 testing path)
+ *   FREESIDE_API_KEY set      → freeside agent-gateway (production)
  *
- * Calls `POST /api/agents/invoke` (non-streaming) to get a digest in
- * Ruggy's voice, given the system prompt + summary payload.
- *
- * STUB_MODE returns a canned digest matching the persona-doc sample
- * outputs, so the bot can run end-to-end without freeside auth.
- *
- * Refs:
- *   - bonfire/grimoires/bonfire/research/freeside-request-surface.md §2
- *   - loa-freeside themes/sietch/src/discord/commands/agent.ts:120-153
+ * Order: anthropic key wins (V0 voice testing); else stub; else freeside.
  */
 
 import type { Config } from '../config.ts';
-import type { ActivitySummary } from '../score/types.ts';
+import type { ZoneDigest, ZoneId } from '../score/types.ts';
+import { ZONE_FLAVOR } from '../score/types.ts';
 
 export interface InvokeRequest {
   systemPrompt: string;
   userMessage: string;
   modelAlias?: 'cheap' | 'fast-code' | 'reviewer' | 'reasoning' | 'architect';
+  zoneHint?: ZoneId;
 }
 
 export interface InvokeResponse {
   text: string;
-  /** When stub-mode, this is null. When real, contains the agent-gateway response metadata. */
   meta?: Record<string, unknown>;
 }
 
-/**
- * Routing (anthropic key takes priority — V0 testing pattern):
- *
- *   ANTHROPIC_API_KEY set   → anthropic-direct (V0 testing; works even with
- *                              STUB_MODE=true so score stays stubbed)
- *   STUB_MODE=true          → canned digest (default)
- *   FREESIDE_API_KEY set    → freeside agent-gateway (production)
- *
- * Common combinations:
- *   STUB_MODE=true,  ANTHROPIC_API_KEY set  → real voice · stub data (V0 voice test)
- *   STUB_MODE=false, ANTHROPIC_API_KEY set  → real voice · real score-api data
- *   STUB_MODE=false, FREESIDE_API_KEY set   → real voice via freeside (production)
- *   STUB_MODE=true,  no keys                → all stub
- */
 export async function invoke(config: Config, req: InvokeRequest): Promise<InvokeResponse> {
   if (config.ANTHROPIC_API_KEY) {
     return invokeAnthropicDirect(config, req);
@@ -56,10 +38,10 @@ export async function invoke(config: Config, req: InvokeRequest): Promise<Invoke
   );
 }
 
-/**
- * Production path — freeside agent-gateway. Routes through model-tier
- * (cheap/fast-code/reviewer/reasoning/architect), budget accounting, etc.
- */
+// ──────────────────────────────────────────────────────────────────────
+// Production path — freeside agent-gateway
+// ──────────────────────────────────────────────────────────────────────
+
 async function invokeFreeside(config: Config, req: InvokeRequest): Promise<InvokeResponse> {
   const url = `${config.FREESIDE_BASE_URL}/api/agents/invoke`;
   const response = await fetch(url, {
@@ -86,14 +68,10 @@ async function invokeFreeside(config: Config, req: InvokeRequest): Promise<Invok
   return { text: data.text, meta: data.usage };
 }
 
-/**
- * Testing path — direct Anthropic Messages API. Bypasses freeside (no
- * budget accounting, no model-tier routing, no audit trail).
- *
- * Use this to validate Ruggy's voice + system prompt while waiting for
- * jani to provision a freeside-agent-gw key. Switch to invokeFreeside()
- * for production by clearing ANTHROPIC_API_KEY in env.
- */
+// ──────────────────────────────────────────────────────────────────────
+// Testing path — anthropic-direct (Claude Messages API)
+// ──────────────────────────────────────────────────────────────────────
+
 async function invokeAnthropicDirect(
   config: Config,
   req: InvokeRequest,
@@ -131,108 +109,116 @@ async function invokeAnthropicDirect(
   return { text, meta: data.usage };
 }
 
-/**
- * Stub digest generator — produces output that looks like Ruggy's voice
- * given a synthetic ActivitySummary parsed out of req.userMessage.
- *
- * Pattern-matches the four cases in apps/bot/src/persona/ruggy.md:
- * normal / quiet / spike / thin-data.
- */
+// ──────────────────────────────────────────────────────────────────────
+// Stub digest — matches the ZoneDigest input shape (reads JSON, voices it)
+// ──────────────────────────────────────────────────────────────────────
+
 function generateStubDigest(req: InvokeRequest): InvokeResponse {
-  const summary = extractSummaryFromUserMessage(req.userMessage);
-  if (!summary) {
+  const digest = extractZoneDigestFromUserMessage(req.userMessage);
+  if (!digest) {
     return {
-      text: '> 📊 mibera midi · this week\n\ni don\'t have signal on that yet — stub digest could not parse the summary.',
+      text: 'yo team — stub digest could not parse the ZoneDigest input.',
     };
   }
 
-  const { totals, topFactors, topActors, rankMovements, windowComparison } = summary;
-  const eventCount = totals.eventCount;
+  const flavor = ZONE_FLAVOR[digest.zone];
+  const stats = digest.raw_stats;
+  const totalEvents = stats.total_events;
+  const wallets = stats.active_wallets;
+  const factors = stats.factor_trends;
 
-  // thin-data case
-  if (eventCount < 100) {
+  // Honor the narrative_error case (analyst couldn't write — partial data)
+  if (!digest.narrative) {
     return {
       text: [
-        '> 📊 mibera midi · this week',
+        `hey ${flavor.name} team — quick check-in but with a caveat`,
         '',
-        '> partial snapshot.',
+        `> partial snapshot.`,
         '',
-        `⚠️ score-mibera reported partial data this window. ${eventCount} events confirmed, rank movements pending.`,
+        `score-mibera reported partial data for ${flavor.name} this window. ${totalEvents} events confirmed, but the analyst pipeline returned an error.`,
         '',
-        'i\'ll repost when the snapshot completes.',
+        `ruggy'll repost when the snapshot completes. probably tomorrow.`,
       ].join('\n'),
     };
   }
 
-  // quiet week
-  if (eventCount < 200) {
-    const lead = topFactors[0];
+  // Quiet week
+  if (totalEvents < 100) {
+    const lead = factors[0];
     return {
       text: [
-        '> 📊 mibera midi · this week',
+        `henlo ${flavor.name}, week check-in`,
         '',
-        `> ${eventCount} events · ${totals.activeActors} actors · ${totals.factorsTouched} factors moved`,
+        `> ${totalEvents} events · ${wallets} wallets · ${factors.length} factors moved`,
         '',
-        `quiet one. \`${lead?.factorId ?? 'nft:mibera'}\` carried most of it (${lead?.eventCount ?? 29} events, ${lead?.uniqueActors ?? 8} actors). nothing else stood out.`,
+        `quiet one. ${lead ? `\`${lead.factor_id}\` carried most of it (${lead.current_count} events). nothing else really moved.` : 'nothing notable moved.'}`,
         '',
-        'rank board didn\'t shuffle. holding pattern.',
+        `low-energy week's still a week. see you next sunday.`,
       ].join('\n'),
     };
   }
 
-  // spike case
-  if (eventCount > 1500) {
-    const top = topFactors[0];
-    const newEntrants = topActors.slice(0, 3);
-    const heaviest = rankMovements[0];
+  // Spike week (multiplier high or spotlight present)
+  const isSpike =
+    (factors[0]?.multiplier ?? 1) > 3 || stats.spotlight !== null;
+
+  if (isSpike) {
+    const lead = factors[0];
+    const climbed = stats.rank_changes.climbed[0];
+    const spotlight = stats.spotlight;
     return {
       text: [
-        '> 📊 mibera midi · this week',
+        `ooga booga ${flavor.name} team, big week`,
         '',
-        `> ${eventCount.toLocaleString()} events · ${totals.activeActors} actors · ${totals.factorsTouched} factors moved`,
+        `> ${totalEvents.toLocaleString()} events · ${wallets} wallets · ${factors.length} factors moved`,
         '',
-        `biggest week since we started counting. \`${top?.factorId ?? 'og:sets'}\` ate the leaderboard — ${top?.eventCount} events, ${top?.uniqueActors} unique actors. \`onchain:lp_provide\` and \`nft:mibera\` both up too.`,
+        lead
+          ? `\`${lead.factor_id}\` ate the leaderboard — ${lead.current_count} events at ${lead.multiplier.toFixed(1)}× baseline. ngl, this is wild.`
+          : 'big week across the board.',
         '',
-        `three new top-10 entrants. ${newEntrants.map((a) => `\`${a.address}\``).join(', ')}. all came in via og:sets velocity. worth watching.`,
+        spotlight
+          ? `🚨 spotlight — \`${spotlight.wallet}\` flagged for ${spotlight.reason.replace('_', ' ')}. someone's making moves.`
+          : climbed
+            ? `🟢 \`${climbed.wallet}\` climbed from #${climbed.prior_rank} → #${climbed.current_rank}. that's the vibe.`
+            : '',
         '',
-        heaviest
-          ? `🚨 \`${heaviest.address}\` went unranked → #${heaviest.newRank} in 6 days. heaviest rank-jump i've logged.`
-          : '',
+        `stay groovy 🐻`,
       ]
         .filter(Boolean)
         .join('\n'),
     };
   }
 
-  // normal week (default)
-  const f1 = topFactors[0];
-  const f2 = topFactors[1];
-  const f3 = topFactors[2];
-  const movement = rankMovements[0];
+  // Normal week
+  const lead = factors[0];
+  const climbed = stats.rank_changes.climbed[0];
 
   return {
     text: [
-      '> 📊 mibera midi · this week',
+      `yo ${flavor.name} team, week check-in time`,
       '',
-      `> ${eventCount} events · ${totals.activeActors} actors · ${totals.factorsTouched} factors moved`,
+      `> ${totalEvents} events · ${wallets} wallets · ${factors.length} factors moved`,
       '',
-      `top movers: \`${f1?.factorId}\` kept pace (${f1?.eventCount} events, ${f1?.uniqueActors} actors), \`${f2?.factorId}\` had a quiet rebound (${f2?.eventCount}, ${f2?.uniqueActors}), \`${f3?.factorId}\` picked up out of nowhere (${f3?.eventCount}, ${f3?.uniqueActors}).`,
+      lead
+        ? `\`${lead.factor_id}\` carried the week (${lead.current_count} events). ${factors[1] ? `\`${factors[1].factor_id}\` had a quiet rebound.` : 'the og crew kept it steady.'}`
+        : 'steady week, no surprises.',
       '',
-      movement
-        ? `🟢 \`${movement.address}\` jumped #${movement.prevRank} → #${movement.newRank}. honey-flow's been there a while; nice to see them claim a top-50 seat.`
+      climbed
+        ? `🟢 peep \`${climbed.wallet}\` — climbed from #${climbed.prior_rank} → #${climbed.current_rank}. solid stack.`
         : '',
+      '',
+      `stay groovy 🐻`,
     ]
       .filter(Boolean)
       .join('\n'),
   };
 }
 
-function extractSummaryFromUserMessage(userMessage: string): ActivitySummary | null {
-  // Match the JSON block embedded in the user message
+function extractZoneDigestFromUserMessage(userMessage: string): ZoneDigest | null {
   const jsonMatch = userMessage.match(/\{[\s\S]+\}/);
   if (!jsonMatch) return null;
   try {
-    return JSON.parse(jsonMatch[0]) as ActivitySummary;
+    return JSON.parse(jsonMatch[0]) as ZoneDigest;
   } catch {
     return null;
   }

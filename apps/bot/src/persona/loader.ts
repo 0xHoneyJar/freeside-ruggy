@@ -1,83 +1,94 @@
 /**
  * Persona loader — extracts Ruggy's system prompt from the canonical
- * persona doc at `apps/bot/src/persona/ruggy.md`.
+ * persona doc at `apps/bot/src/persona/ruggy.md`, substitutes the
+ * runtime placeholders, and returns the system + user prompt pair.
  *
- * The persona doc embeds a "## System prompt template — paste-ready for V1"
- * section containing the system prompt inside a fenced code block. This
- * loader finds that section and returns the prompt with the
- * `{{ACTIVITY_SUMMARY_JSON}}` placeholder still in place — the digest
- * composer substitutes it just-in-time.
- *
- * Per CLAUDE.md: never edit persona/ruggy.md without syncing back to
- * bonfire grimoires.
+ * Placeholders the persona doc uses:
+ *   {{CODEX_PRELUDE}}       — Mibera Codex llms.txt (loaded at runtime)
+ *   {{ZONE_ID}}             — current zone (stonehenge / bear-cave / …)
+ *   {{ZONE_DIGEST_JSON}}    — score-mcp ZoneDigest payload
  */
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import type { ZoneId } from '../score/types.ts';
+import { loadCodexPrelude } from '../score/codex-context.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PERSONA_PATH = resolve(__dirname, 'ruggy.md');
 
 const SECTION_HEADER = '## System prompt template';
-const PLACEHOLDER = '{{ACTIVITY_SUMMARY_JSON}}';
 
-let cached: string | null = null;
+let cachedTemplate: string | null = null;
 
-export function loadSystemPrompt(): string {
-  if (cached) return cached;
+function loadTemplate(): string {
+  if (cachedTemplate) return cachedTemplate;
 
   const raw = readFileSync(PERSONA_PATH, 'utf8');
-
   const sectionStart = raw.indexOf(SECTION_HEADER);
   if (sectionStart === -1) {
-    throw new Error(
-      `persona loader: could not find "${SECTION_HEADER}" in ruggy.md`,
-    );
+    throw new Error(`persona loader: could not find "${SECTION_HEADER}" in ruggy.md`);
   }
 
-  // Find the next fenced code block after the section header.
-  // The template is wrapped in ` ```` ` (4-backtick fence) since it contains
-  // 3-backtick code blocks itself.
   const sectionBody = raw.slice(sectionStart);
   const fenceMatch = sectionBody.match(/^````([^\n]*)\n([\s\S]+?)\n````/m);
   if (!fenceMatch) {
-    throw new Error(
-      'persona loader: could not extract fenced code block from system prompt section',
-    );
+    throw new Error('persona loader: could not extract fenced code block from system prompt section');
   }
 
-  cached = fenceMatch[2]!.trim();
-  return cached;
+  cachedTemplate = fenceMatch[2]!.trim();
+  return cachedTemplate;
+}
+
+export function loadSystemPrompt(): string {
+  return loadTemplate();
+}
+
+export interface BuildPromptArgs {
+  zoneId: ZoneId;
+  zoneDigestJson: string;
 }
 
 /**
- * Compose the user message for the LLM call by substituting the
- * `{{ACTIVITY_SUMMARY_JSON}}` placeholder into the system prompt.
+ * Compose the system + user prompt pair for an LLM call.
  *
- * Returns the system prompt with the placeholder REMOVED, plus the
- * user message containing the JSON. This lets the LLM treat the data
- * as user input (which it is — fresh per call) rather than baking it
- * into the system role.
+ * The placeholders are split between the two roles intentionally:
+ *   • System prompt: identity + voice + zone awareness + codex prelude
+ *   • User message: the runtime ZoneDigest payload
+ *
+ * This lets the system prompt stay cacheable while the user message
+ * varies per call.
  */
-export function buildPromptPair(activitySummaryJson: string): {
+export function buildPromptPair(args: BuildPromptArgs): {
   systemPrompt: string;
   userMessage: string;
 } {
-  const fullPrompt = loadSystemPrompt();
+  const template = loadTemplate();
+  const codex = loadCodexPrelude();
 
-  // Split the prompt at the placeholder line. Everything before becomes
-  // the system role; everything after (including the "Write the digest now"
-  // instruction) is appended to the user message.
-  const parts = fullPrompt.split(PLACEHOLDER);
-  if (parts.length !== 2) {
-    throw new Error(
-      `persona loader: expected exactly one "${PLACEHOLDER}" in system prompt`,
-    );
+  // Substitute zone + codex into the system part. Split at the INPUT PAYLOAD
+  // marker so the runtime data goes into the user message.
+  const inputPayloadMarker = '═══ INPUT PAYLOAD ═══';
+  const idx = template.indexOf(inputPayloadMarker);
+  if (idx === -1) {
+    throw new Error(`persona loader: could not find INPUT PAYLOAD marker in template`);
   }
 
-  const systemPrompt = parts[0]!.trimEnd();
-  const userMessage = `${parts[1]!.trimStart()}\n\nINPUT PAYLOAD:\n${activitySummaryJson}`;
+  const systemHalf = template
+    .slice(0, idx)
+    .replace(/\{\{ZONE_ID\}\}/g, args.zoneId)
+    .replace(/\{\{CODEX_PRELUDE\}\}/g, codex)
+    .trimEnd();
 
-  return { systemPrompt, userMessage };
+  const userHalf = template
+    .slice(idx)
+    .replace(/\{\{ZONE_ID\}\}/g, args.zoneId)
+    .replace(/\{\{ZONE_DIGEST_JSON\}\}/g, args.zoneDigestJson)
+    .trim();
+
+  return {
+    systemPrompt: systemHalf,
+    userMessage: userHalf,
+  };
 }

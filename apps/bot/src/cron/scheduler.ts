@@ -1,10 +1,12 @@
 /**
- * Cron scheduler for the weekly digest.
+ * Cron scheduler — fires all configured zones per cadence.
  *
  * Default: Sunday UTC midnight (`0 0 * * 0`). Configurable via env:
  *   DIGEST_DAY=sunday|monday|...|saturday
  *   DIGEST_HOUR_UTC=0..23
  *   DIGEST_CADENCE=weekly|daily|manual
+ *
+ * `onFire` is invoked once per scheduled tick — the caller iterates zones.
  */
 
 import cron from 'node-cron';
@@ -40,8 +42,8 @@ export function scheduleDigest(
 
   const expression =
     config.DIGEST_CADENCE === 'daily'
-      ? `0 ${hour} * * *` // every day at HH:00 UTC
-      : `0 ${hour} * * ${dow}`; // weekly at HH:00 UTC on chosen DOW
+      ? `0 ${hour} * * *`
+      : `0 ${hour} * * ${dow}`;
 
   if (!cron.validate(expression)) {
     throw new Error(`invalid cron expression: ${expression}`);

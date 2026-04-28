@@ -1,29 +1,34 @@
 /**
- * Discord embed builder for the weekly digest.
+ * Discord embed builder for per-zone weekly digests.
  *
- * Per persona doc "Discord-as-Material" section:
- * - ALWAYS populate `message.content` as graceful fallback for users
- *   with embeds disabled. Silent failures are not acceptable.
- * - Sidebar color carries week-over-week direction at a glance.
- * - Inline fields > ASCII tables (mobile-resilient).
- * - Footer in subtext for muted metadata.
+ * Per persona "Discord-as-Material" rules:
+ * - ALWAYS populate `message.content` as graceful fallback
+ * - Sidebar color carries direction (or zone-flavored)
+ * - Footer in subtext for muted metadata
+ * - One embed per post (lean, no thumbnails, no author)
  */
 
-import type { ActivitySummary } from '../score/types.ts';
+import type { ZoneDigest, ZoneId } from '../score/types.ts';
+import { ZONE_FLAVOR } from '../score/types.ts';
 import { escapeDiscordMarkdown } from './sanitize.ts';
 
-/** Discord embed color codes (decimal) */
-const COLORS = {
-  green: 0x2ecc71, // up / healthy / yield-positive
-  red: 0xe74c3c, // down / exploit / liquidation
-  gray: 0x95a5a6, // neutral / quiet
-  yellow: 0xf39c12, // partial / warning
+const DIRECTION_COLORS = {
+  green: 0x2ecc71,
+  red: 0xe74c3c,
+  gray: 0x95a5a6,
+  yellow: 0xf39c12,
 } as const;
 
+/** Per-zone signature colors (used when direction is flat/unknown) */
+const ZONE_COLORS: Record<ZoneId, number> = {
+  stonehenge: 0x808890, // weathered stone gray
+  'bear-cave': 0x9b6a3f, // warm cave brown
+  'el-dorado': 0xc9a44c, // muted gold
+  'owsley-lab': 0x6f4ea1, // owsley purple (acid-house lineage)
+};
+
 export interface DigestPayload {
-  /** Plain-text fallback (graceful degradation when embeds disabled) */
   content: string;
-  /** The rich embed (single, lean — no thumbnails, no author) */
   embeds: DiscordEmbed[];
 }
 
@@ -34,29 +39,34 @@ export interface DiscordEmbed {
   footer?: { text: string };
 }
 
-export function buildDigestPayload(
-  summary: ActivitySummary,
+export function buildZoneEmbedPayload(
+  digest: ZoneDigest,
   voice: string,
 ): DigestPayload {
-  const direction = summary.windowComparison?.direction ?? 'flat';
-  const isThin = summary.totals.eventCount < 100;
+  const flavor = ZONE_FLAVOR[digest.zone];
+  const stats = digest.raw_stats;
+
+  // Direction inferred from spotlight + climbers
+  const hasSpike = stats.spotlight !== null || stats.factor_trends.some((t) => t.multiplier > 2);
+  const isThin = !digest.narrative && digest.narrative_error !== null;
+  const hasDrops = stats.rank_changes.dropped.length > 0;
 
   const color = isThin
-    ? COLORS.yellow
-    : direction === 'up'
-      ? COLORS.green
-      : direction === 'down'
-        ? COLORS.red
-        : COLORS.gray;
+    ? DIRECTION_COLORS.yellow
+    : hasSpike
+      ? DIRECTION_COLORS.green
+      : hasDrops && stats.rank_changes.climbed.length === 0
+        ? DIRECTION_COLORS.red
+        : ZONE_COLORS[digest.zone];
 
-  // Plain-text fallback — appears above embed; visible even if embeds disabled
-  const fallback = buildFallbackContent(summary);
+  // Plain-text fallback above embed (graceful degradation)
+  const fallback = `${flavor.emoji} ${flavor.name} · ${stats.total_events} events · ${stats.active_wallets} wallets`;
 
-  // The embed body IS the LLM's voice output. Sanitize it for Discord rendering.
+  // Sanitize the LLM's voice output (escape underscores in identifiers etc.)
   const description = escapeDiscordMarkdown(voice);
 
-  // Footer carries deterministic provenance — the "computed at" line
-  const footerText = `computed at ${new Date(summary.computedAt).toISOString()} · score-mibera`;
+  // Footer carries deterministic provenance
+  const footerText = `computed at ${digest.computed_at} · score-mcp · zone:${digest.zone}`;
 
   return {
     content: fallback,
@@ -68,14 +78,4 @@ export function buildDigestPayload(
       },
     ],
   };
-}
-
-/**
- * Build the graceful-fallback content line. Brief, evidence-first,
- * carries the headline counts so users with embeds disabled still see
- * the digest.
- */
-function buildFallbackContent(summary: ActivitySummary): string {
-  const window = summary.window;
-  return `📊 ${summary.worldId} ${summary.appId ?? ''} · ${window.granularity} digest · ${summary.totals.eventCount} events`.trim();
 }
