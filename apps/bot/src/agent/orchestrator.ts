@@ -32,6 +32,7 @@ import type { PostType } from '../llm/post-types.ts';
 import { rosenzuServer } from './rosenzu/server.ts';
 import { factorsServer } from './factors/server.ts';
 import { freesideAuthServer } from './freeside_auth/server.ts';
+import { emojisServer } from './emojis/server.ts';
 
 export interface OrchestratorRequest {
   systemPrompt: string;
@@ -61,6 +62,7 @@ function buildMcpServers(config: Config): Record<string, McpServerConfig> {
     rosenzu: rosenzuServer,
     factors: factorsServer,
     freeside_auth: freesideAuthServer,
+    emojis: emojisServer,
   };
 
   // Register score-mcp whenever MCP_KEY is set. STUB_MODE used to gate

@@ -23,15 +23,40 @@
 // tap-to-copy on mobile. Stripping them would lose that affordance.
 const FORMAT_CHARS = /(?<!\\)([_*~|])/g;
 
+// Custom emoji syntax: <:name:id> or <a:name:id>. Escaping the
+// underscore in `mibera_ninja` breaks Discord's emoji parser; the
+// emoji renders as broken `<:mibera\_ninja:...>` text instead of the
+// image. Same applies to user/role/channel mentions and timestamps —
+// any `<...>` token is structural, not prose.
+const PROTECTED_TOKEN = /<(a?:[\w]+:\d+|@[!&]?\d+|#\d+|t:\d+(?::[a-zA-Z])?)>/g;
+
+// Placeholder uses Unicode Private-Use Area chars (U+E001..U+EFFE) —
+// these never appear in normal text, contain no markdown format chars,
+// and survive escapeDiscordMarkdown round-trip cleanly.
+const PLACEHOLDER_BASE = 0xE001;
+
 export function escapeDiscordMarkdown(text: string): string {
   if (!text) return text;
-  // We must NOT escape characters inside inline-code spans (between
-  // single backticks). Discord doesn't parse formatting inside those.
-  // Split on backticks, alternate: outside | inside | outside | inside
-  return text
+
+  // Step 1: pull protected tokens out into PUA placeholders.
+  const protectedSegments: string[] = [];
+  let withPlaceholders = text.replace(PROTECTED_TOKEN, (match) => {
+    const i = protectedSegments.length;
+    protectedSegments.push(match);
+    return String.fromCharCode(PLACEHOLDER_BASE + i);
+  });
+
+  // Step 2: escape format chars outside inline-code spans.
+  withPlaceholders = withPlaceholders
     .split('`')
     .map((segment, idx) => (idx % 2 === 0 ? segment.replace(FORMAT_CHARS, '\\$1') : segment))
     .join('`');
+
+  // Step 3: restore protected tokens verbatim.
+  return withPlaceholders.replace(/[-]/g, (ch) => {
+    const i = ch.charCodeAt(0) - PLACEHOLDER_BASE;
+    return protectedSegments[i] ?? '';
+  });
 }
 
 /**
