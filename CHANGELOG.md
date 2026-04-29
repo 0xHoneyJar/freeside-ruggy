@@ -1,5 +1,27 @@
 # Changelog
 
+## [unreleased] — 2026-04-29
+
+### Docs
+- Rewrote `README.md` to reflect V0.5-E reality — superseded V1-era webhook + polling framing.
+  Surfaces: persona-layer-bot positioning (vs sietch operations layer), tripartite construct
+  composition (rosenzu · arneson · cabal-gygax + codex + emojis + freeside_auth + score),
+  six post types + three cadences, four festival zones, the "Ruggy is one consumer of score,
+  not the only one" framing, and the extractability story for sibling personas.
+- Rewrote `CLAUDE.md` agent guidance — V0.5-E stack (Claude Agent SDK, in-bot MCPs,
+  discord.js Gateway), construct boundaries table, "don't do" updated for the persona-layer
+  invariants.
+- Rewrote `docs/ARCHITECTURE.md` — V0.5-E architecture diagram with SDK runtime, in-bot MCPs,
+  cabal-gygax subagent, arneson skill loading. Module responsibilities, dependency rules,
+  swap-out matrix, future shape, and a construct-extractability checklist.
+- Updated GitHub repo description + topics to surface the persona-layer + reference-implementation framing for discoverability.
+- **Smol+weaver pass** (2026-04-29) — README + ARCHITECTURE.md ASCII diagrams converted to
+  Mermaid (interactive on GitHub since 2022, mobile-friendly, follows the rendering-mermaid
+  skill's portability rules — middle-dot inline separators, classDef vocabulary). Prose
+  tightened to lowercase casual register. Repo layout collapsed into `<details>`. Construct
+  table emoji-anchored. Added `construct-extractability` Mermaid for the sibling-persona
+  scaffold/variable split.
+
 ## [0.1.0] — 2026-04-28
 
 ### Added
