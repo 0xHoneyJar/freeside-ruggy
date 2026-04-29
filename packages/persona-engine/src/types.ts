@@ -28,6 +28,18 @@ export type EmojiAffinityKind = 'mibera' | 'ruggy';
  *   - emojiAffinity: hint for emoji MCP (V0.6-A: informational only;
  *                    V0.6-B+ wired into MCP server filtering)
  *   - displayName  : human-readable label for log lines (defaults to id)
+ *
+ * V0.6-D (Pattern B / webhook-shell):
+ *   - webhookAvatarUrl : HTTPS URL to character avatar — used as
+ *                        per-message `avatar_url` override in webhook
+ *                        sends. When unset, delivery falls back to
+ *                        bot.send (shell account's own avatar). The
+ *                        target URL hierarchy is `assets.0xhoneyjar.xyz/
+ *                        freeside-characters/<id>/avatar.png`; until
+ *                        that CDN cycle reaches freeside-characters,
+ *                        any stable HTTPS URL works.
+ *   - webhookUsername  : per-message `username` override in webhook
+ *                        sends. Defaults to displayName ?? id.
  */
 export interface CharacterConfig {
   id: string;
@@ -38,6 +50,8 @@ export interface CharacterConfig {
     fallback?: EmojiAffinityKind;
   };
   displayName?: string;
+  webhookAvatarUrl?: string;
+  webhookUsername?: string;
 }
 
 export type { ZoneId, PostType };

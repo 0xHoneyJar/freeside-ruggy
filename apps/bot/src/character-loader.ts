@@ -27,6 +27,10 @@ interface CharacterJson {
     primary?: EmojiAffinityKind;
     fallback?: EmojiAffinityKind;
   };
+  /** V0.6-D: HTTPS URL for per-message webhook avatar override (Pattern B). */
+  webhookAvatarUrl?: string;
+  /** V0.6-D: per-message webhook username override (defaults to displayName ?? id). */
+  webhookUsername?: string;
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -60,6 +64,8 @@ export function loadCharacter(id: string): CharacterConfig {
     personaPath: resolve(charDir, json.personaFile),
     exemplarsDir: json.exemplarsDir ? resolve(charDir, json.exemplarsDir) : undefined,
     emojiAffinity: json.emojiAffinity,
+    webhookAvatarUrl: json.webhookAvatarUrl,
+    webhookUsername: json.webhookUsername,
   };
 }
 

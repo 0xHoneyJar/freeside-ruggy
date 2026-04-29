@@ -102,7 +102,7 @@ async function main(): Promise<void> {
         `\n[${zone}/${postType}] composed in ${compMs}ms · ${getWindowEventCount(result.digest.raw_stats)} events · ${getWindowWalletCount(result.digest.raw_stats)} miberas`,
       );
 
-      const delivery = await deliverZoneDigest(config, zone, result.payload);
+      const delivery = await deliverZoneDigest(config, primary, zone, result.payload);
       if (delivery.posted) {
         posted++;
         console.log(`[${zone}/${postType}] posted via ${delivery.via}` + (delivery.messageId ? ` (msg ${delivery.messageId})` : ''));

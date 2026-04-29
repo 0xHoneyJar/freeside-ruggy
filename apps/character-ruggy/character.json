@@ -8,6 +8,9 @@
     "primary": "ruggy",
     "fallback": "mibera"
   },
+  "webhookAvatarUrl": null,
+  "webhookUsername": "Ruggy",
+  "webhookAvatarTarget": "https://assets.0xhoneyjar.xyz/freeside-characters/ruggy/avatar.png (per SDD §0.2 per-world URL contract; sprint-1 of loa-freeside is migrating to assets.0xhoneyjar.xyz; until that cycle reaches /freeside-characters/ keys, set webhookAvatarUrl to any stable HTTPS URL the operator uploads)",
   "doc": {
     "creativeDirection": "creative-direction.md"
   },

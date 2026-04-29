@@ -100,7 +100,7 @@ async function main(): Promise<void> {
       }
       console.log(`${primary.id}: ${req.zone}/${req.postType} composed (${getWindowEventCount(result.digest.raw_stats)} events) in ${Date.now() - t0}ms`);
 
-      const delivery = await deliverZoneDigest(config, req.zone, result.payload);
+      const delivery = await deliverZoneDigest(config, primary, req.zone, result.payload);
       if (delivery.posted) {
         console.log(`${primary.id}: ${req.zone}/${req.postType} posted via ${delivery.via}` + (delivery.messageId ? ` (msg ${delivery.messageId})` : ''));
       } else if (delivery.dryRun) {
