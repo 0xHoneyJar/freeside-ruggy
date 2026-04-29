@@ -140,6 +140,21 @@ export function buildPromptPair(args: BuildPromptArgs): {
   const zoneDimension = ZONE_FLAVOR[args.zoneId].dimension;
   const dimensionName = DIMENSION_NAME[zoneDimension];
 
+  // Movement guidance per ANNOUNCE_NEGATIVE_MOVEMENT env flag (V0.6-D
+  // operator pick 2026-04-30: default false — internal observation phase
+  // wants positive-only movement; flip to true once tone calibrated).
+  const announceNegative = process.env.ANNOUNCE_NEGATIVE_MOVEMENT === 'true';
+  const movementGuidance = announceNegative
+    ? `MOVEMENT POLICY: announce both positive (climbs · entered_top_tier) AND
+negative (drops · exited_top_tier · slides) movement. Both contribute to the
+week's shape; report what's happening.`
+    : `MOVEMENT POLICY: announce POSITIVE movement only — climbs, entered_top_tier,
+factor advances. Do NOT mention drops, exits, or slides at this stage.
+Negative-movement data is in raw_stats.rank_changes.dropped /
+exited_top_tier / etc — read it for context but DO NOT surface it in
+prose. Internal-observation phase per operator 2026-04-30; toggleable
+via ANNOUNCE_NEGATIVE_MOVEMENT env flag.`;
+
   const systemHalf = template
     .slice(0, idx)
     .replace(/\{\{ZONE_ID\}\}/g, args.zoneId)
@@ -147,6 +162,7 @@ export function buildPromptPair(args: BuildPromptArgs): {
     .replace(/\{\{DIMENSION\}\}/g, dimensionName)
     .replace(/\{\{POST_TYPE\}\}/g, args.postType)
     .replace(/\{\{POST_TYPE_GUIDANCE\}\}/g, fragment)
+    .replace(/\{\{MOVEMENT_GUIDANCE\}\}/g, movementGuidance)
     .replace(/\{\{CODEX_PRELUDE\}\}/g, codex)
     .replace(/\{\{EXEMPLARS\}\}/g, exemplars)
     .trimEnd();
@@ -158,6 +174,7 @@ export function buildPromptPair(args: BuildPromptArgs): {
     .replace(/\{\{DIMENSION\}\}/g, dimensionName)
     .replace(/\{\{POST_TYPE\}\}/g, args.postType)
     .replace(/\{\{POST_TYPE_OUTPUT_INSTRUCTION\}\}/g, instruction)
+    .replace(/\{\{MOVEMENT_GUIDANCE\}\}/g, movementGuidance)
     .trim();
 
   return {

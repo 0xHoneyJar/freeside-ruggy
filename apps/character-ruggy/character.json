@@ -6,7 +6,7 @@
   "exemplarsDir": "exemplars",
   "emojiAffinity": {
     "primary": "ruggy",
-    "fallback": "mibera"
+    "fallback": "ruggy"
   },
   "webhookAvatarUrl": "https://raw.githubusercontent.com/0xHoneyJar/freeside-characters/staging/apps/character-ruggy/avatar.png",
   "webhookUsername": "Ruggy",

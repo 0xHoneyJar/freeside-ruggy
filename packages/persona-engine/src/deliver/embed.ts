@@ -9,7 +9,7 @@
  */
 
 import type { ZoneDigest, ZoneId } from '../score/types.ts';
-import { ZONE_FLAVOR, getWindowEventCount, getWindowWalletCount } from '../score/types.ts';
+import { ZONE_FLAVOR } from '../score/types.ts';
 import { POST_TYPE_SPECS, type PostType } from '../compose/post-types.ts';
 import { escapeDiscordMarkdown } from './sanitize.ts';
 
@@ -91,15 +91,19 @@ export function buildPostPayload(
 
 function buildFallback(digest: ZoneDigest, postType: PostType): string {
   const flavor = ZONE_FLAVOR[digest.zone];
-  const stats = digest.raw_stats;
 
+  // V0.6-D voice cleanup 2026-04-30: fallback content is the line OUTSIDE the
+  // embed in Discord — the channel itself is already named after the zone, so
+  // any duplication of stats / zone-name in this fallback creates the
+  // redundancy operator flagged ("repeats itself"). Keep it minimal: emoji +
+  // proper-cased name only. The embed body carries the data-rich headline.
+  // For users with embeds disabled this is a graceful but minimal degradation.
   switch (postType) {
     case 'digest':
-      return `${flavor.emoji} ${flavor.name} · ${getWindowEventCount(stats)} events · ${getWindowWalletCount(stats)} miberas`;
     case 'weaver':
-      return `${flavor.emoji} ${flavor.name} · cross-zone weave 🪡`;
+      return `${flavor.emoji} ${flavor.name}`;
     case 'callout':
-      return `🚨 ${flavor.name} · anomaly`;
+      return `🚨 ${flavor.name}`;
     default:
       return `${flavor.emoji} ${flavor.name}`;
   }

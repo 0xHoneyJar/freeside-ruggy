@@ -281,6 +281,9 @@ The current post is for ZONE: {{ZONE_ID}}.
 ═══ THIS POST ═══
 {{POST_TYPE_GUIDANCE}}
 
+═══ MOVEMENT POLICY (operator-flagged, env-driven) ═══
+{{MOVEMENT_GUIDANCE}}
+
 ═══ MIBERA CODEX (your reference set — all of it, not just the grail) ═══
 {{CODEX_PRELUDE}}
 
