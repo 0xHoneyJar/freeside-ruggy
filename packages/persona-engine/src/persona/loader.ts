@@ -23,6 +23,7 @@
 
 import { readFileSync } from 'node:fs';
 import type { ZoneId } from '../score/types.ts';
+import { ZONE_FLAVOR, DIMENSION_NAME } from '../score/types.ts';
 import { loadCodexPrelude } from '../score/codex-context.ts';
 import type { PostType } from '../compose/post-types.ts';
 import type { CharacterConfig } from '../types.ts';
@@ -130,9 +131,20 @@ export function buildPromptPair(args: BuildPromptArgs): {
     throw new Error(`persona loader: could not find INPUT PAYLOAD marker in template (${character.personaPath})`);
   }
 
+  // Display-cased zone + dimension names for prose substitution.
+  // ZONE_ID stays kebab (routing key); ZONE_NAME is the proper-cased
+  // display ("Owsley Lab"); DIMENSION_NAME is the proper-cased dimension
+  // ("Onchain"). Persona templates use ZONE_NAME / DIMENSION_NAME in
+  // prose; ZONE_ID is reserved for tool calls + routing-shaped contexts.
+  const zoneName = ZONE_FLAVOR[args.zoneId].name;
+  const zoneDimension = ZONE_FLAVOR[args.zoneId].dimension;
+  const dimensionName = DIMENSION_NAME[zoneDimension];
+
   const systemHalf = template
     .slice(0, idx)
     .replace(/\{\{ZONE_ID\}\}/g, args.zoneId)
+    .replace(/\{\{ZONE_NAME\}\}/g, zoneName)
+    .replace(/\{\{DIMENSION\}\}/g, dimensionName)
     .replace(/\{\{POST_TYPE\}\}/g, args.postType)
     .replace(/\{\{POST_TYPE_GUIDANCE\}\}/g, fragment)
     .replace(/\{\{CODEX_PRELUDE\}\}/g, codex)
@@ -142,6 +154,8 @@ export function buildPromptPair(args: BuildPromptArgs): {
   const userHalf = template
     .slice(idx)
     .replace(/\{\{ZONE_ID\}\}/g, args.zoneId)
+    .replace(/\{\{ZONE_NAME\}\}/g, zoneName)
+    .replace(/\{\{DIMENSION\}\}/g, dimensionName)
     .replace(/\{\{POST_TYPE\}\}/g, args.postType)
     .replace(/\{\{POST_TYPE_OUTPUT_INSTRUCTION\}\}/g, instruction)
     .trim();

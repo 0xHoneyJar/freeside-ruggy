@@ -51,11 +51,23 @@ export const ZONE_TO_DIMENSION = {
 } as const satisfies Record<ZoneId, ZoneDimension>;
 
 export const ZONE_FLAVOR = {
-  stonehenge: { emoji: '🗿', name: 'stonehenge', dimension: 'overall' },
-  'bear-cave': { emoji: '🐻', name: 'bear-cave', dimension: 'og' },
-  'el-dorado': { emoji: '⛏️', name: 'el-dorado', dimension: 'nft' },
-  'owsley-lab': { emoji: '🧪', name: 'owsley-lab', dimension: 'onchain' },
+  stonehenge: { emoji: '🗿', name: 'Stonehenge', dimension: 'overall' },
+  'bear-cave': { emoji: '🐻', name: 'Bear Cave', dimension: 'og' },
+  'el-dorado': { emoji: '⛏️', name: 'El Dorado', dimension: 'nft' },
+  'owsley-lab': { emoji: '🧪', name: 'Owsley Lab', dimension: 'onchain' },
 } as const satisfies Record<ZoneId, { emoji: string; name: string; dimension: ZoneDimension }>;
+
+/**
+ * Display-cased dimension names — used in prose where the dimension reads as
+ * a proper noun ("the Onchain dimension"), not as a kebab routing key.
+ * The DimensionId type stays lowercase for routing/code parity.
+ */
+export const DIMENSION_NAME = {
+  og: 'OG',
+  nft: 'NFT',
+  onchain: 'Onchain',
+  overall: 'Overall',
+} as const satisfies Record<ZoneDimension, string>;
 
 export function isZoneId(value: unknown): value is ZoneId {
   return typeof value === 'string' && (ZONE_IDS as readonly string[]).includes(value);
