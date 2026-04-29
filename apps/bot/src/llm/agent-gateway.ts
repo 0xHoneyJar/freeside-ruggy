@@ -180,7 +180,7 @@ function stubDigest(digest: ZoneDigest): string {
     return [
       `henlo ${flavor.name}, week check-in`,
       ``,
-      `> ${total} events · ${wallets} wallets · ${factors.length} factors moved`,
+      `> ${total} events · ${wallets} miberas · ${factors.length} factors moved`,
       ``,
       `quiet one. ${lead ? `\`${lead.factor_id}\` carried it (${lead.current_count} events).` : 'nothing notable moved.'} holding pattern.`,
       ``,
@@ -193,7 +193,7 @@ function stubDigest(digest: ZoneDigest): string {
     return [
       `ooga booga ${flavor.name} team, big week`,
       ``,
-      `> ${total.toLocaleString()} events · ${wallets} wallets · ${factors.length} factors moved`,
+      `> ${total.toLocaleString()} events · ${wallets} miberas · ${factors.length} factors moved`,
       ``,
       lead ? `\`${lead.factor_id}\` ate the leaderboard — ${lead.current_count} events at ${lead.multiplier.toFixed(1)}× baseline. ngl, this is wild.` : '',
       ``,
@@ -210,7 +210,7 @@ function stubDigest(digest: ZoneDigest): string {
   return [
     `yo ${flavor.name} team, week check-in`,
     ``,
-    `> ${total} events · ${wallets} wallets · ${factors.length} factors moved`,
+    `> ${total} events · ${wallets} miberas · ${factors.length} factors moved`,
     ``,
     lead ? `\`${lead.factor_id}\` carried the week (${lead.current_count} events). steady run.` : 'steady week.',
     ``,
@@ -228,14 +228,14 @@ function stubMicro(digest: ZoneDigest): string {
   const opts = [
     `yo, just peeped ${flavor.name} — ${lead ? `\`${lead.factor_id}\` is steady (${lead.current_count} events). ` : ''}${climbed ? `\`${climbed.wallet}\` quietly climbing.` : 'nothing wild but the og crew is moving.'}`,
     `${flavor.name}'s been ${lead && lead.multiplier > 2 ? 'buzzin' : 'kinda chill'} today. ${lead ? `\`${lead.factor_id}\` carrying the load.` : 'holding pattern.'}`,
-    `quick peep at ${flavor.name} — ${digest.raw_stats.total_events} events, ${digest.raw_stats.active_wallets} wallets active. ${climbed ? `solid stack from \`${climbed.wallet}\`.` : 'steady.'}`,
+    `quick peep at ${flavor.name} — ${digest.raw_stats.total_events} events, ${digest.raw_stats.active_wallets} miberas active. ${climbed ? `solid stack from \`${climbed.wallet}\`.` : 'steady.'}`,
   ];
   return opts[Math.floor(Math.random() * opts.length)] ?? opts[0]!;
 }
 
 function stubWeaver(digest: ZoneDigest): string {
   const flavor = ZONE_FLAVOR[digest.zone];
-  return `noticed something across the festival this week — ${flavor.name} is buzzin (${digest.raw_stats.total_events} events) but the same wallets keep showing up across multiple zones. that's the og pattern: stack everywhere, not just one zone. keep a peep on the cross-zone movers.`;
+  return `noticed something across the festival this week — ${flavor.name} is buzzin (${digest.raw_stats.total_events} events) but the same miberas keep showing up across multiple zones. that's the og pattern: stack everywhere, not just one zone. keep a peep on the cross-zone movers.`;
 }
 
 function stubLoreDrop(digest: ZoneDigest): string {
