@@ -1,24 +1,32 @@
 /**
- * LLM gateway — explicit provider routing (V0.4).
+ * LLM gateway — explicit provider routing (V0.4 → V0.5-A).
  *
  * Per codex-rescue F1: stub-vs-real selection should be EXPLICIT, not
  * inferred from key presence. LLM_PROVIDER env makes intent legible:
  *
  *   LLM_PROVIDER=stub        → canned digest (no LLM call). Fails loud
  *                              if anyone expected a real call.
- *   LLM_PROVIDER=anthropic   → Anthropic Messages API direct. Requires
+ *   LLM_PROVIDER=anthropic   → Claude Agent SDK (`query()` runtime) via
+ *                              `agent/orchestrator.ts`. Requires
  *                              ANTHROPIC_API_KEY; throws if missing.
  *   LLM_PROVIDER=freeside    → freeside agent-gateway. Requires
  *                              FREESIDE_API_KEY; throws if missing.
  *   LLM_PROVIDER=auto        → V0.3 back-compat: anthropic key wins,
  *                              else stub if STUB_MODE, else freeside.
  *                              Logs the resolved provider on first call.
+ *
+ * V0.5-A migration: the `anthropic` path moved from a manual fetch to
+ * the Claude Agent SDK. Voice/output is unchanged — the SDK runs a
+ * single-turn query, no tool calls, with the digest JSON pre-fetched
+ * into the user message. V0.5-B activates Arneson + Rosenzu via the
+ * SDK's mcpServers + skills primitives.
  */
 
 import type { Config } from '../config.ts';
 import type { ZoneDigest, ZoneId } from '../score/types.ts';
 import { ZONE_FLAVOR } from '../score/types.ts';
 import type { PostType } from './post-types.ts';
+import { runOrchestratorQuery } from '../agent/orchestrator.ts';
 
 export interface InvokeRequest {
   systemPrompt: string;
@@ -77,12 +85,25 @@ export async function invoke(config: Config, req: InvokeRequest): Promise<Invoke
   const provider = resolveProvider(config);
   switch (provider) {
     case 'anthropic':
-      return invokeAnthropicDirect(config, req);
+      return invokeAnthropicSdk(config, req);
     case 'stub':
       return generateStubPost(req);
     case 'freeside':
       return invokeFreeside(config, req);
   }
+}
+
+async function invokeAnthropicSdk(config: Config, req: InvokeRequest): Promise<InvokeResponse> {
+  if (!req.zoneHint || !req.postTypeHint) {
+    throw new Error('invokeAnthropicSdk: zoneHint and postTypeHint are required');
+  }
+  const result = await runOrchestratorQuery(config, {
+    systemPrompt: req.systemPrompt,
+    userMessage: req.userMessage,
+    zone: req.zoneHint,
+    postType: req.postTypeHint,
+  });
+  return { text: result.text, meta: result.meta };
 }
 
 async function invokeFreeside(config: Config, req: InvokeRequest): Promise<InvokeResponse> {
@@ -109,43 +130,6 @@ async function invokeFreeside(config: Config, req: InvokeRequest): Promise<Invok
 
   const data = (await response.json()) as { text: string; usage?: Record<string, unknown> };
   return { text: data.text, meta: data.usage };
-}
-
-async function invokeAnthropicDirect(
-  config: Config,
-  req: InvokeRequest,
-): Promise<InvokeResponse> {
-  const url = 'https://api.anthropic.com/v1/messages';
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'x-api-key': config.ANTHROPIC_API_KEY!,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: config.ANTHROPIC_MODEL,
-      max_tokens: 1024,
-      system: req.systemPrompt,
-      messages: [{ role: 'user', content: req.userMessage }],
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`anthropic api error: ${response.status} ${await response.text()}`);
-  }
-
-  const data = (await response.json()) as {
-    content: Array<{ type: string; text?: string }>;
-    usage?: Record<string, unknown>;
-  };
-
-  const text = data.content
-    .filter((c) => c.type === 'text' && c.text)
-    .map((c) => c.text)
-    .join('\n');
-
-  return { text, meta: data.usage };
 }
 
 // ──────────────────────────────────────────────────────────────────────
