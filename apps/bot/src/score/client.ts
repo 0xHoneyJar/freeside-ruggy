@@ -1,81 +1,162 @@
 /**
- * Score-MCP client — calls zerker's `get_zone_digest` tool over MCP.
+ * Score-MCP client — calls zerker's `get_zone_digest` tool over the
+ * real MCP protocol on score-api/mcp.
+ *
+ * Protocol shape (per @modelcontextprotocol/sdk StreamableHTTP):
+ *   1. POST /mcp { method: "initialize" } → returns SSE response
+ *      with Mcp-Session-Id header
+ *   2. POST /mcp { method: "notifications/initialized" } with session id
+ *   3. POST /mcp { method: "tools/call", ... } with session id → SSE
+ *
+ * Session is 30min TTL server-side. We reinit per call (stateless from
+ * client's perspective). When V0.5 SDK migration lands, swap this for
+ * `@anthropic-ai/claude-agent-sdk` mcpServers config.
  *
  * Routing:
- *   STUB_MODE=true       → generate synthetic ZoneDigest (no MCP needed)
- *   MCP_KEY set          → real MCP call to {SCORE_API_URL}/mcp
- *
- * MCP transport is StreamableHTTP (per @modelcontextprotocol/sdk). For V1
- * we POST a single JSON-RPC envelope with the tool call — keeps deps minimal
- * until we add the SDK proper. Session reuse + GC are server-side.
+ *   STUB_MODE=true (no MCP_KEY) → synthetic ZoneDigest
+ *   MCP_KEY set                 → real MCP call
  */
 
 import type { Config } from '../config.ts';
 import type { ZoneDigest, ZoneId, RawStats, NarrativeShape } from './types.ts';
 import { ZONE_TO_DIMENSION } from './types.ts';
 
-export async function fetchZoneDigest(
-  config: Config,
-  zone: ZoneId,
-): Promise<ZoneDigest> {
+interface McpInitResult {
+  sessionId: string;
+}
+
+interface McpJsonRpcEnvelope<T = unknown> {
+  jsonrpc: '2.0';
+  id: number;
+  result?: T;
+  error?: { code: number; message: string; data?: unknown };
+}
+
+interface McpToolResult {
+  content: Array<{ type: string; text?: string }>;
+  isError?: boolean;
+}
+
+const MCP_PROTOCOL_VERSION = '2024-11-05';
+
+/** Parse a single SSE response body into the embedded JSON-RPC envelope. */
+function parseSseEnvelope<T>(body: string): McpJsonRpcEnvelope<T> {
+  // SSE format: lines like `event: message\ndata: {json}\n\n`. Find the data line.
+  const dataLine = body.split(/\r?\n/).find((l) => l.startsWith('data: '));
+  if (!dataLine) {
+    throw new Error(`mcp: response had no SSE 'data:' line — body=${body.slice(0, 200)}`);
+  }
+  const json = dataLine.slice('data: '.length).trim();
+  return JSON.parse(json) as McpJsonRpcEnvelope<T>;
+}
+
+async function mcpInit(url: string, key: string): Promise<McpInitResult> {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json, text/event-stream',
+      'X-MCP-Key': key,
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: MCP_PROTOCOL_VERSION,
+        clientInfo: { name: 'freeside-ruggy', version: '0.4.0' },
+        capabilities: {},
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`mcp init failed: ${response.status} ${await response.text()}`);
+  }
+
+  const sessionId = response.headers.get('mcp-session-id');
+  if (!sessionId) {
+    throw new Error('mcp init: response missing Mcp-Session-Id header');
+  }
+
+  // Drain the body so the connection releases cleanly
+  await response.text();
+
+  // Send the initialized notification (fire-and-forget; server expects it)
+  await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json, text/event-stream',
+      'X-MCP-Key': key,
+      'Mcp-Session-Id': sessionId,
+    },
+    body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
+  });
+
+  return { sessionId };
+}
+
+async function mcpToolCall<T>(
+  url: string,
+  key: string,
+  sessionId: string,
+  toolName: string,
+  toolArgs: Record<string, unknown>,
+): Promise<T> {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json, text/event-stream',
+      'X-MCP-Key': key,
+      'Mcp-Session-Id': sessionId,
+    },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: Math.floor(Math.random() * 1e9),
+      method: 'tools/call',
+      params: { name: toolName, arguments: toolArgs },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`mcp tools/call failed: ${response.status} ${await response.text()}`);
+  }
+
+  const envelope = parseSseEnvelope<McpToolResult>(await response.text());
+  if (envelope.error) {
+    throw new Error(`mcp tools/call error: ${JSON.stringify(envelope.error)}`);
+  }
+
+  const text = envelope.result?.content?.[0]?.text;
+  if (!text) {
+    throw new Error('mcp tools/call: empty content');
+  }
+
+  return JSON.parse(text) as T;
+}
+
+export async function fetchZoneDigest(config: Config, zone: ZoneId): Promise<ZoneDigest> {
   if (config.STUB_MODE && !config.MCP_KEY) {
     return generateStubZoneDigest(zone);
   }
 
   if (!config.MCP_KEY) {
-    throw new Error(
-      'MCP_KEY required for live score-mcp calls; or set STUB_MODE=true for synthetic data',
-    );
+    throw new Error('MCP_KEY required for live score-mcp; or set STUB_MODE=true for synthetic data');
   }
 
-  // V1 minimal MCP call — JSON-RPC tool invocation over HTTP.
-  // Each request is a fresh "initialize → tools/call" pair (server handles
-  // per-session state). When the @modelcontextprotocol/sdk dependency lands,
-  // swap this for StreamableHTTPClientTransport.
   const url = `${config.SCORE_API_URL}/mcp`;
-  const payload = {
-    jsonrpc: '2.0',
-    id: 1,
-    method: 'tools/call',
-    params: {
-      name: 'get_zone_digest',
-      arguments: { zone, window: 'weekly' },
-    },
-  };
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      'X-MCP-Key': config.MCP_KEY,
-    },
-    body: JSON.stringify(payload),
+  const { sessionId } = await mcpInit(url, config.MCP_KEY);
+  return mcpToolCall<ZoneDigest>(url, config.MCP_KEY, sessionId, 'get_zone_digest', {
+    zone,
+    window: 'weekly',
   });
-
-  if (!response.ok) {
-    throw new Error(`score-mcp error: ${response.status} ${await response.text()}`);
-  }
-
-  const envelope = (await response.json()) as {
-    result?: { content?: Array<{ type: string; text?: string }> };
-    error?: unknown;
-  };
-
-  if (envelope.error) {
-    throw new Error(`score-mcp tool error: ${JSON.stringify(envelope.error)}`);
-  }
-
-  const text = envelope.result?.content?.[0]?.text;
-  if (!text) {
-    throw new Error('score-mcp returned empty content');
-  }
-
-  return JSON.parse(text) as ZoneDigest;
 }
 
 // ──────────────────────────────────────────────────────────────────────
 // Stub generator — synthetic ZoneDigest matching zerker's schema
+// (kept for STUB_MODE=true testing; not used when MCP_KEY is set)
 // ──────────────────────────────────────────────────────────────────────
 
 export function generateStubZoneDigest(zone: ZoneId): ZoneDigest {
@@ -83,17 +164,14 @@ export function generateStubZoneDigest(zone: ZoneId): ZoneDigest {
   const dow = new Date(now).getUTCDay();
   const dimension = ZONE_TO_DIMENSION[zone];
 
-  // Vary shape by day-of-week for predictable test variance
-  // Sun=normal · Mon=quiet · Tue=spike · Wed=thin
   const shapes: Record<number, ShapeSpec> = {
     0: { multiplier: 1, label: 'normal', notable: 1, climbers: 1, narrative: true },
     1: { multiplier: 0.1, label: 'quiet', notable: 0, climbers: 0, narrative: true },
     2: { multiplier: 4.5, label: 'spike', notable: 3, climbers: 3, narrative: true },
-    3: { multiplier: 0.2, label: 'thin', notable: 0, climbers: 0, narrative: false }, // narrative_error
+    3: { multiplier: 0.2, label: 'thin', notable: 0, climbers: 0, narrative: false },
   };
   const shape = shapes[dow] ?? shapes[0]!;
 
-  // Per-zone factor mix (lighter on stonehenge cross-zone, focused on the others)
   const factorBaselines: Record<ZoneId, Array<{ factor_id: string; baseline: number }>> = {
     stonehenge: [
       { factor_id: 'og:sets', baseline: 38 },
@@ -117,7 +195,6 @@ export function generateStubZoneDigest(zone: ZoneId): ZoneDigest {
       { factor_id: 'onchain:shadow_minter', baseline: 8 },
     ],
   };
-
   const factors = factorBaselines[zone];
 
   const factorTrends = factors.map((f) => ({
@@ -171,7 +248,6 @@ export function generateStubZoneDigest(zone: ZoneId): ZoneDigest {
     factor_trends: factorTrends,
   };
 
-  // Score-analyst-style narrative (server pre-writes; ruggy rewrites)
   const narrative: NarrativeShape | null = shape.narrative
     ? buildStubNarrative(zone, shape.label, rawStats)
     : null;
@@ -191,7 +267,7 @@ export function generateStubZoneDigest(zone: ZoneId): ZoneDigest {
     narrative_error: shape.narrative ? null : 'narrative_unavailable',
     narrative_error_hint: shape.narrative
       ? null
-      : 'Score-analyst narrative pipeline returned partial data this window. Surface raw_stats only.',
+      : 'Score-analyst narrative pipeline returned partial data this window.',
     raw_stats: rawStats,
   };
 }
@@ -203,31 +279,28 @@ function buildStubNarrative(zone: ZoneId, label: string, stats: RawStats): Narra
 
   const headlines: Record<string, string> = {
     normal: `${zone} held steady this week — ${totalEvents} events, ${activeWallets} active wallets`,
-    quiet: `${zone} quiet this week — ${totalEvents} events across ${activeWallets} wallets, holding pattern`,
+    quiet: `${zone} quiet this week — ${totalEvents} events across ${activeWallets} wallets`,
     spike: `${zone} elevated activity — ${totalEvents} events from ${activeWallets} wallets`,
   };
 
   const sections: NarrativeShape['sections'] = [];
-
   if (topFactor) {
     sections.push({
       kind: 'movers',
-      body: `${topFactor.factor_id} led the week with ${topFactor.current_count} events, multiplier ${topFactor.multiplier.toFixed(2)}× baseline. Behavior-focused observation: factor concentration was ${stats.factor_trends.length > 2 ? 'distributed' : 'narrow'}.`,
+      body: `${topFactor.factor_id} led with ${topFactor.current_count} events at ${topFactor.multiplier.toFixed(2)}× baseline.`,
     });
   }
-
   if (stats.rank_changes.climbed.length > 0) {
     const top = stats.rank_changes.climbed[0]!;
     sections.push({
       kind: 'movers',
-      body: `Wallet ${top.wallet} climbed from rank ${top.prior_rank} to ${top.current_rank} (${top.rank_delta}-place delta) on the ${top.dimension} ledger.`,
+      body: `Wallet ${top.wallet} climbed from rank ${top.prior_rank} to ${top.current_rank}.`,
     });
   }
-
   if (stats.spotlight) {
     sections.push({
       kind: 'spotlight',
-      body: `Spotlight: wallet ${stats.spotlight.wallet} flagged for ${stats.spotlight.reason.replace('_', ' ')}.`,
+      body: `Spotlight: ${stats.spotlight.wallet} flagged for ${stats.spotlight.reason.replace('_', ' ')}.`,
     });
   }
 
