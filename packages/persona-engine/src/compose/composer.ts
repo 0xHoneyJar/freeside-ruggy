@@ -21,6 +21,7 @@ import type { CharacterConfig } from '../types.ts';
 import { fetchZoneDigest } from '../score/client.ts';
 import type { ZoneDigest, ZoneId } from '../score/types.ts';
 import { invoke } from './agent-gateway.ts';
+import { enforceCanonicalHeadline } from './headline-lock.ts';
 import { buildPromptPair } from '../persona/loader.ts';
 import { buildPostPayload, type DigestPayload } from '../deliver/embed.ts';
 import {
@@ -53,7 +54,7 @@ export async function composeZonePost(
     postType,
   });
 
-  const [digest, { text: voice }] = await Promise.all([
+  const [digest, { text: rawVoice }] = await Promise.all([
     digestPromise,
     invoke(config, {
       character,
@@ -64,6 +65,20 @@ export async function composeZonePost(
       postTypeHint: postType,
     }),
   ]);
+
+  // Enforce canonical zone emoji in headline (hard lock per operator
+  // directive 2026-04-29). World elements (zone identity) are not in the
+  // LLM's creative territory — substrate-level guard ensures the headline
+  // emoji is always the canonical ZONE_FLAVOR entry. Only acts when drift
+  // detected (LLM produced a custom-emoji ref in headline slot).
+  const lockResult = enforceCanonicalHeadline(rawVoice, zone, postType);
+  if (lockResult.enforced) {
+    console.log(
+      `${character.id}: headline-lock enforced on ${zone}/${postType} ` +
+        `· replaced "${lockResult.replaced}" with canonical zone emoji`,
+    );
+  }
+  const voice = lockResult.voice;
 
   const payload = buildPostPayload(digest, voice, postType);
   return { zone, postType, digest, voice, payload };
