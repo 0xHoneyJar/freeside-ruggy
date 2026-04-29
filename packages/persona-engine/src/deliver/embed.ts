@@ -9,7 +9,7 @@
  */
 
 import type { ZoneDigest, ZoneId } from '../score/types.ts';
-import { ZONE_FLAVOR } from '../score/types.ts';
+import { ZONE_FLAVOR, DIMENSION_NAME } from '../score/types.ts';
 import { POST_TYPE_SPECS, type PostType } from '../compose/post-types.ts';
 import { escapeDiscordMarkdown } from './sanitize.ts';
 
@@ -91,20 +91,27 @@ export function buildPostPayload(
 
 function buildFallback(digest: ZoneDigest, postType: PostType): string {
   const flavor = ZONE_FLAVOR[digest.zone];
+  const dimensionName = DIMENSION_NAME[flavor.dimension];
 
-  // V0.6-D voice cleanup 2026-04-30: fallback content is the line OUTSIDE the
-  // embed in Discord — the channel itself is already named after the zone, so
-  // any duplication of stats / zone-name in this fallback creates the
-  // redundancy operator flagged ("repeats itself"). Keep it minimal: emoji +
-  // proper-cased name only. The embed body carries the data-rich headline.
-  // For users with embeds disabled this is a graceful but minimal degradation.
+  // V0.6-D voice/v5 (operator 2026-04-30): fallback content is the line
+  // OUTSIDE the embed. Channel name already covers location → keep stats out
+  // (no duplication with embed headline) BUT pair zone↔dimension explicitly
+  // for world-building. Per operator: "in world-building, these words make
+  // sense when there's more weight to them. Over time, when there's history
+  // of people being familiar with these locations, it'll be a little bit
+  // more familiar, and we could drop some of these wordings. Right now, it's
+  // important that people are still aware of the connection between these
+  // things." Stonehenge = Overall (cross-zone hub), so omit the dimension
+  // paren for it (would read "Stonehenge (Overall)" stilted; the hub is
+  // self-explanatory).
+  const dimensionParen = flavor.dimension === 'overall' ? '' : ` (${dimensionName})`;
   switch (postType) {
     case 'digest':
     case 'weaver':
-      return `${flavor.emoji} ${flavor.name}`;
+      return `${flavor.emoji} ${flavor.name}${dimensionParen}`;
     case 'callout':
-      return `🚨 ${flavor.name}`;
+      return `🚨 ${flavor.name}${dimensionParen}`;
     default:
-      return `${flavor.emoji} ${flavor.name}`;
+      return `${flavor.emoji} ${flavor.name}${dimensionParen}`;
   }
 }
