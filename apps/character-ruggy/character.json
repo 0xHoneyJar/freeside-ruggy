@@ -1,0 +1,20 @@
+{
+  "$schema": "https://freeside-characters/schema/character.v0.json",
+  "id": "ruggy",
+  "displayName": "Ruggy",
+  "personaFile": "persona.md",
+  "exemplarsDir": "exemplars",
+  "emojiAffinity": {
+    "primary": "ruggy",
+    "fallback": "ruggy"
+  },
+  "anchoredArchetypes": ["Storyteller", "GM"],
+  "webhookAvatarUrl": "https://raw.githubusercontent.com/0xHoneyJar/freeside-characters/staging/apps/character-ruggy/avatar.png",
+  "webhookUsername": "Ruggy",
+  "webhookAvatarTarget": "https://assets.0xhoneyjar.xyz/freeside-characters/ruggy/avatar.png — canonical target per SDD §0.2 per-world URL contract; bridge URL above points at the staging branch's avatar.png (operator-uploaded 2026-04-30); swap to canonical when assets.0xhoneyjar.xyz CDN cycle reaches /freeside-characters/",
+  "doc": {
+    "creativeDirection": "creative-direction.md"
+  },
+  "stage": "character",
+  "stageNotes": "V0.6 character-stage participation agent. Codex-grounded, LLM-driven. Daemon stage (V0.7+) requires dNFT mint machinery + ERC-6551 TBA + designed-voice templates per Eileen's puruhani-as-spine canon."
+}

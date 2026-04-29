@@ -1,13 +1,8 @@
 # freeside-characters (née freeside-ruggy)
 
-> **branch state (2026-04-30):** `main` is the V0.5-E single-character runtime that ships to production THJ. The umbrella architecture described below — substrate at `packages/persona-engine/`, characters at `apps/character-<id>/`, civic-layer doctrine docs — lives on [`staging`](https://github.com/0xHoneyJar/freeside-characters/tree/staging) for V0.6+ work. promote when V0.6 ships.
-
----
-
-
 > participation-agent umbrella for the honey jar ecosystem. **substrate** at `packages/persona-engine/` (system-agent layer — cron · delivery · MCP orchestration · score-mcp client). **characters** at `apps/character-<id>/` (participation-agent layer — markdown + JSON profiles). **bot** at `apps/bot/` (thin runtime that loads characters and dispatches through the substrate).
 >
-> V0.6-A pulled the layers apart structurally per [Eileen's civic-layer doctrine](https://github.com/0xHoneyJar/freeside-characters/blob/staging/docs/CIVIC-LAYER.md): system agents (governors) and participation agents (speakers) must not blur. Boundary enforced via package imports + the `CharacterConfig` type contract. New characters land as folders, not forks.
+> V0.6-A pulled the layers apart structurally per [Eileen's civic-layer doctrine](docs/CIVIC-LAYER.md): system agents (governors) and participation agents (speakers) must not blur. Boundary enforced via package imports + the `CharacterConfig` type contract. New characters land as folders, not forks.
 >
 > *Ruggy is the first character — honey jar's bear, laid-back, groovy, been here since the og chat days. Satoshi (Mibera ancestor, codex grail #4488 = Hermes) joins in V0.6-C.*
 
@@ -15,7 +10,7 @@
 ʕ •ᴥ•ʔ  stay groovy 🐻
 ```
 
-**See:** [`docs/CIVIC-LAYER.md`](https://github.com/0xHoneyJar/freeside-characters/blob/staging/docs/CIVIC-LAYER.md) · [`docs/CHARACTER-AUTHORING.md`](https://github.com/0xHoneyJar/freeside-characters/blob/staging/docs/CHARACTER-AUTHORING.md) · [`docs/MULTI-REGISTER.md`](https://github.com/0xHoneyJar/freeside-characters/blob/staging/docs/MULTI-REGISTER.md) · [`apps/character-ruggy/ledger.md`](https://github.com/0xHoneyJar/freeside-characters/blob/staging/apps/character-ruggy/ledger.md)
+**See:** [`docs/CIVIC-LAYER.md`](docs/CIVIC-LAYER.md) · [`docs/CHARACTER-AUTHORING.md`](docs/CHARACTER-AUTHORING.md) · [`docs/MULTI-REGISTER.md`](docs/MULTI-REGISTER.md) · [`apps/character-ruggy/ledger.md`](apps/character-ruggy/ledger.md)
 
 ---
 

@@ -1,38 +1,91 @@
 # Deploy
 
-Deploy goes through Freeside ECS, matching the `world-mibera.tf` pattern from honeyroad. Railway is a faster fallback (see end of this doc).
+V0.6-D deploy shape: **1 bot account · 2 Railway services · webhook-shell pattern.** One Discord App acts as the runtime shell hosting N characters via per-channel webhooks with per-message identity override (`username` + `avatar_url`). Per Eileen's `puruhani-as-spine.md`: *"the Discord App becomes the interface/runtime shell."*
 
-> **Status (V0.5-E)**: Ruggy#1157 is registered + live in 4 THJ Discord channels. Production runtime is currently operator-supervised (local + cron); ECS migration is queued per the `loa-freeside` tracker. This doc captures the target shape.
+> ECS migration via `loa-freeside` is queued (see end of this doc). Railway is the active path.
+
+## Topology
+
+```
+            github: 0xHoneyJar/freeside-characters
+              │                          │
+         ┌────┴───┐                ┌────┴────┐
+         │  main  │                │ staging │
+         │ V0.5-E │                │ V0.6-D+ │
+         │ (Pat A)│                │ (Pat B) │
+         └────┬───┘                └────┬────┘
+              │                         │
+              ▼                         ▼
+         ╔═════════════╗      ╔═══════════════════════════╗
+         ║prod-ruggy   ║      ║staging-shell              ║
+         ╠═════════════╣      ╠═══════════════════════════╣
+         ║token:       ║      ║token:                     ║
+         ║ ruggy       ║      ║ ruggy (same account)      ║
+         ║guild:       ║      ║guild:                     ║
+         ║ THJ         ║      ║ project purupuru          ║
+         ║CHARS:       ║      ║CHARS:                     ║
+         ║ (n/a · V0.5)║      ║ ruggy,satoshi             ║
+         ║delivery:    ║      ║delivery:                  ║
+         ║ bot.send    ║      ║ webhook-shell             ║
+         ║             ║      ║ (per-character avatar +   ║
+         ║             ║      ║  username override)       ║
+         ║manual deploy║      ║auto-deploy on push        ║
+         ╚═════════════╝      ╚═══════════════════════════╝
+```
+
+| Layer | What |
+|---|---|
+| **bot accounts** | **1 total.** `ruggy` (already registered, `ruggy#1157`, in BOTH guilds — THJ + project purupuru). Same token used by prod-ruggy and staging-shell. The shell account name will be renamed away from "Ruggy" once the operator picks a neutral shell name. |
+| **branches** | `main` = prod source (V0.5-E shape, single-character monolith). `staging` = V0.6+ source (substrate-extracted, Pattern B webhook-shell). |
+| **services** | 2 Railway services. prod-ruggy ships V0.5-E ruggy to THJ via bot.send. staging-shell ships V0.6 Pattern B to project purupuru via per-channel webhooks; CHARACTERS=ruggy,satoshi means the same process loads both characters. |
+| **promotion** | When V0.6-D Pattern B is prod-ready, fast-forward `staging` → `main`. prod-ruggy redeploys with `CHARACTERS=ruggy` (single-character on the new substrate). |
+
+Same Dockerfile, same image, only ENV diverges per service.
+
+## Build artifacts
+
+- `Dockerfile` — Bun-based, V0.6 monorepo aware (copies persona-engine + character profiles + bot)
+- `.dockerignore` — excludes `node_modules`, `.env`, `apps/bot/.run/`, `grimoires/`
+- `railway.json` — points Railway at the Dockerfile + sets restart policy (ON_FAILURE, max 10)
+- `apps/bot/.claude/skills/arneson/` — TTRPG-DM scene-gen skill loaded via SDK `settingSources: ['project']` (NOT excluded by `.dockerignore` — `.claude` is root-level only)
 
 ## Prerequisites
 
-1. **Discord application registered** — `Ruggy` bot user (`Ruggy#1157`), bot token saved
-2. **Per-zone channel IDs** — 4 channels in THJ guild (stonehenge / bear-cave / el-dorado / owsley-lab), IDs in `.env.example`
-3. **score-mcp access** — `MCP_KEY` for zerker's `score-api/mcp` endpoint
-4. **Anthropic API key** — `ANTHROPIC_API_KEY` for the Claude Agent SDK runtime (currently the production LLM path; freeside agent-gw remains as a configurable fallback)
-5. **Postgres access** — `RAILWAY_MIBERA_DATABASE_URL` for `midi_profiles` (wallet → identity resolution via `freeside_auth` MCP)
-6. **AWS access** to apply terraform in `loa-freeside` (when ECS migration lands)
+1. **Shell bot account** — `ruggy` (already registered). When the operator picks a neutral shell name, rename via Discord Developer Portal. Same token survives the rename.
+2. **Bot OAuth permissions** — V0.6-D adds `MANAGE_WEBHOOKS` to the existing `Send Messages · Embed Links · Use External Emojis · Read Message History` set. Re-invite via OAuth URL OR grant per-channel via guild settings (admin → channel permissions → bot role → Manage Webhooks).
+3. **Per-zone channel IDs** for both guilds
+   - THJ guild `1135545260538339420` — 4 channels
+   - project purupuru guild `1495534680617910396` — 4 channels (already in `.env.example`)
+4. **score-mcp access** — `MCP_KEY` for zerker's `score-api/mcp` endpoint
+5. **Anthropic API key** — `ANTHROPIC_API_KEY` for the Claude Agent SDK runtime
+6. **Postgres access** — `RAILWAY_MIBERA_DATABASE_URL` for `midi_profiles` (wallet → identity via `freeside_auth` MCP)
+7. **Character avatar URLs** — `webhookAvatarUrl` per character in `apps/character-<id>/character.json`. Target hierarchy per SDD §0.2: `assets.0xhoneyjar.xyz/freeside-characters/<id>/avatar.png`. Until that CDN cycle reaches `/freeside-characters/`, any stable HTTPS URL works (operator-uploaded). When `webhookAvatarUrl` is `null`, delivery falls back gracefully to `bot.send` under the shell's own identity — Pattern B is opt-in per-character via config.
 
 ## Local validation (before deploy)
 
 ```bash
-cd freeside-ruggy
+cd freeside-characters
 bun install
-cp .env.example .env
 
-# 1. Pure stub — no external deps, end-to-end
-LLM_PROVIDER=stub STUB_MODE=true bun run digest:once
+# 1. Pure stub — substrate accepts both characters end-to-end
+LLM_PROVIDER=stub STUB_MODE=true CHARACTERS=ruggy bun run digest:once
+LLM_PROVIDER=stub STUB_MODE=true CHARACTERS=satoshi bun run digest:once
 
-# 2. Real LLM, stub data — voice validation without burning score-mcp quota
-LLM_PROVIDER=anthropic ANTHROPIC_API_KEY=… STUB_MODE=true bun run digest:once
+# 2. Real LLM, stub data — voice validation per character
+LLM_PROVIDER=anthropic ANTHROPIC_API_KEY=… STUB_MODE=true \
+  CHARACTERS=ruggy bun run digest:once
+
+LLM_PROVIDER=anthropic ANTHROPIC_API_KEY=… STUB_MODE=true \
+  CHARACTERS=satoshi bun run digest:once
 
 # 3. Real everything except Discord — dry-run output to stdout
 LLM_PROVIDER=anthropic ANTHROPIC_API_KEY=… \
   STUB_MODE=false MCP_KEY=… \
   RAILWAY_MIBERA_DATABASE_URL=postgres://… \
-  bun run digest:once
+  CHARACTERS=ruggy bun run digest:once
 
-# 4. Full live path — bot.send() to per-zone channels
+# 4. Full live Pattern B path — webhook-shell delivery to staging guild
+#    (requires character.webhookAvatarUrl set in character.json + bot has MANAGE_WEBHOOKS)
 LLM_PROVIDER=anthropic ANTHROPIC_API_KEY=… \
   STUB_MODE=false MCP_KEY=… \
   RAILWAY_MIBERA_DATABASE_URL=postgres://… \
@@ -41,138 +94,69 @@ LLM_PROVIDER=anthropic ANTHROPIC_API_KEY=… \
   DISCORD_CHANNEL_BEAR_CAVE=… \
   DISCORD_CHANNEL_EL_DORADO=… \
   DISCORD_CHANNEL_OWSLEY_LAB=… \
-  bun run digest:once
+  CHARACTERS=ruggy,satoshi bun run digest:once
 ```
 
-## ECS deploy (when ready)
+## First-time setup
 
-Steps mirror the honeyroad migration (per `~/bonfire/grimoires/bonfire/NOTES.md` 2026-04-18 close):
+### 1. Grant `MANAGE_WEBHOOKS` to the shell bot
 
-1. **Add `world-freeside-ruggy.tf`** to `loa-freeside/infrastructure/terraform/`:
-   ```hcl
-   module "world_freeside_ruggy" {
-     source = "./modules/world"
-     name   = "freeside-ruggy"
-     repo   = "0xHoneyJar/freeside-ruggy"
-     # smaller compute — bot is low-traffic
-     cpu    = 256
-     memory = 512
-     # bot is a long-running process, not a request handler
-     desired_count = 1
-   }
-   ```
+The V0.5-E ruggy bot's OAuth permissions don't include `MANAGE_WEBHOOKS`. V0.6-D needs it for fetch-or-create-webhook-per-channel. Two paths:
 
-2. **Author `world-freeside-ruggy-secrets.tf`** with the env keys ruggy needs (V0.5-E):
-   - `ANTHROPIC_API_KEY` (production LLM path)
-   - `MCP_KEY` (score-mcp gate)
-   - `RAILWAY_MIBERA_DATABASE_URL` (freeside_auth → midi_profiles)
-   - `DISCORD_BOT_TOKEN` (Gateway client)
-   - `DISCORD_CHANNEL_STONEHENGE`, `DISCORD_CHANNEL_BEAR_CAVE`, `DISCORD_CHANNEL_EL_DORADO`, `DISCORD_CHANNEL_OWSLEY_LAB` (per-zone routing)
-   - `SCORE_API_URL` (default `https://score-api-production.up.railway.app`)
-   - `LLM_PROVIDER=anthropic`, `STUB_MODE=false` (production overrides)
-   - Optional: `DISCORD_WEBHOOK_URL` (fallback path), `FREESIDE_BASE_URL` + `FREESIDE_API_KEY` (when freeside agent-gw replaces direct anthropic)
-
-3. **`scripts/load-freeside-ruggy-secrets.sh`** — fork from `loa-freeside/scripts/load-honeyroad-secrets.sh`, populate from operator's local config
-
-4. **Author Dockerfile** in this repo (Bun-based, multi-stage):
-   ```dockerfile
-   FROM oven/bun:1.1-alpine AS builder
-   WORKDIR /app
-   COPY . .
-   RUN bun install --frozen-lockfile
-
-   FROM oven/bun:1.1-alpine
-   WORKDIR /app
-   COPY --from=builder /app .
-   CMD ["bun", "run", "apps/bot/src/index.ts"]
-   ```
-
-5. **CI workflow** — fork `loa-freeside/ci-templates/world-deploy.yml` into `.github/workflows/deploy.yml`, set `AWS_DEPLOY_ROLE_ARN` GHA secret
-
-6. **`terraform plan` + `terraform apply`** in loa-freeside — creates ECS service + ECR repo + ALB rule + secrets manager entries (NOTE: bot doesn't need ALB; may need module variant for non-HTTP services — coordinate with jani)
-
-7. **Push image** — first deploy via GHA workflow_dispatch
-
-8. **Validate** — bot logs visible in CloudWatch; first digest fires per cron sweep across the 4 per-zone channels
-
-## Smaller-than-honeyroad considerations
-
-Ruggy doesn't need:
-- ALB (no inbound HTTP)
-- public subnet (only outbound to score-api + freeside + Discord)
-- ACM cert
-- Route53 A-record (no domain)
-
-May need a module variant: `modules/world-bot` instead of `modules/world` — file as a follow-up issue. For initial migration, can deploy via `modules/world` and ignore the unused ALB resources, or use a simpler standalone ECS task definition.
-
-## Railway deploy — current path (2026-04-30)
-
-**Decision**: deploying to Railway first (faster iteration), Freeside ECS migration deferred.
-**Operator**: 2 services for staging→prod separation. Staging iterates forward; production
-pins to a stable build until manually bumped.
-
-### Topology
-
+**Option A — re-invite via OAuth URL (cleanest):**
 ```
-            github: 0xHoneyJar/freeside-ruggy:main
-                              │
-                              ▼
-                     ┌────────┴────────┐
-                     │                 │
-                     ▼                 ▼
-              ╔════════════╗    ╔════════════╗
-              ║  staging   ║    ║ production ║
-              ╚════╤═══════╝    ╚════╤═══════╝
-                   │                 │
-         token: ruggy#1157          token: ruggy-prod
-         guild: project purupuru    guild: The Honey Jar
-         auto-deploy on push        manual deploy only
-         iterates forward           pinned (until you bump)
+discord.com/developers/applications → Ruggy → OAuth2 → URL Generator
+  scopes: bot
+  permissions: Send Messages · Embed Links · Use External Emojis ·
+               Read Message History · MANAGE WEBHOOKS
+Visit URL → reauthorize bot in BOTH guilds (THJ + project purupuru)
 ```
 
-Same Dockerfile, same image, only env diverges per service. The build artifacts live in this repo:
+**Option B — per-channel grant (no re-OAuth needed):**
+- Guild Settings → Roles → bot role → Permissions → enable `Manage Webhooks`
+- Or per-channel: channel settings → Permissions → bot role → enable `Manage Webhooks`
 
-- `Dockerfile` — Bun-based, copies workspace + apps/bot, runs the bot via `bun run`
-- `.dockerignore` — excludes node_modules, .env, .run/, grimoires
-- `railway.json` — points Railway at the Dockerfile + sets restart policy
+Per-channel scope is tighter security; do this in BOTH the THJ + project purupuru per-zone channels.
 
-### First-time setup
+### 2. Upload character avatars to a stable HTTPS endpoint
 
-#### 1. Create production bot identity
+Until the assets.0xhoneyjar.xyz CDN cycle reaches `/freeside-characters/`, the operator uploads avatar images to any stable HTTPS endpoint. Options:
 
-`ruggy#1157` already lives in two guilds — use it for STAGING. For PRODUCTION, register a separate Discord application + bot so accidental staging fires can't cross-pollute.
+- Direct upload to S3 in account `891376933289` under a temp prefix (e.g. `s3://thj-temp/freeside-characters/ruggy/avatar.png`) → CloudFront URL works
+- GitHub raw URL on the freeside-characters repo (e.g. `https://raw.githubusercontent.com/0xHoneyJar/freeside-characters/staging/apps/character-ruggy/avatar.png`)
+- Discord CDN (after uploading via the Developer Portal Avatar field) — works if you can extract the CDN URL
 
-```
-discord.com/developers/applications → New Application
-  name: "ruggy-prod" (or "freeside-ruggy")
-Bot tab → Reset Token → save as PROD_DISCORD_BOT_TOKEN
-OAuth2 → URL Generator
-  scopes: bot, applications.commands
-  permissions: Send Messages, Embed Links, Use External Emojis,
-               Read Message History
-Visit URL → install into "The Honey Jar" guild → verify bot in member list
-```
+Once uploaded, set `webhookAvatarUrl` in `apps/character-<id>/character.json`. When the canonical CDN cycle lands `assets.0xhoneyjar.xyz/freeside-characters/<id>/avatar.png`, swap the URL in one config change.
 
-#### 2. Provision Railway services
+If `webhookAvatarUrl` stays `null`, posts go via `bot.send` under the shell account's avatar — functional but loses per-character visual identity.
+
+### 3. Provision Railway services
+
+Railway portal → **New Project** → name: `freeside-characters`
 
 ```
-railway.app → New Project → Empty Project
-  name: "freeside-ruggy"
+# ─── service 1: prod-ruggy ──────────────────────────
 Add Service → Deploy from GitHub Repo
-  repo:   0xHoneyJar/freeside-ruggy
-  branch: main
-  name:   "ruggy-staging"
+  repo:   0xHoneyJar/freeside-characters
+  branch: main                     ← V0.5-E source
+  name:   "prod-ruggy"
+  Settings → Source → DISABLE auto-deploy on push
+    (prod stays pinned until manually bumped)
+
+# ─── service 2: staging-shell ───────────────────────
 Add Service → Deploy from same repo
-  name:   "ruggy-prod"
-ruggy-prod → Settings → Source → DISABLE auto-deploy on push
-  (so prod stays pinned until you manually bump)
+  branch: staging                  ← V0.6-D+ source
+  name:   "staging-shell"
+  Settings → Source → KEEP auto-deploy on push
+    (staging iterates forward; one process hosts both characters)
 ```
 
-#### 3. Set env vars per service
+### 4. Set env vars per service
 
-Per service: Settings → Variables → paste from `.env.example`.
+Per service: Settings → Variables.
 
-**Shared (both services):**
+#### Shared across both services
+
 ```
 ANTHROPIC_API_KEY=sk-ant-api03-...
 ANTHROPIC_MODEL=claude-sonnet-4-6
@@ -184,64 +168,147 @@ NODE_ENV=production
 LOG_LEVEL=info
 ```
 
-**ruggy-staging only:**
+#### prod-ruggy only
+
+```
+ENV=production
+DISCORD_BOT_TOKEN=<ruggy bot token>
+DISCORD_CHANNEL_STONEHENGE=1497618160592097464
+DISCORD_CHANNEL_BEAR_CAVE=1497618042560188517
+DISCORD_CHANNEL_EL_DORADO=1497618131269718106    # Discord display: "agora"
+DISCORD_CHANNEL_OWSLEY_LAB=1497617952831176777
+
+# CHARACTERS not set on V0.5-E (main has no character-loader).
+# When V0.6 promotes to main, also set CHARACTERS=ruggy.
+```
+
+#### staging-shell only
+
 ```
 ENV=staging
-DISCORD_BOT_TOKEN=<token for ruggy#1157>
+CHARACTERS=ruggy,satoshi
+DISCORD_BOT_TOKEN=<same ruggy bot token as prod>
 DISCORD_CHANNEL_STONEHENGE=1498822402900230294
 DISCORD_CHANNEL_BEAR_CAVE=1498822450316578907
 DISCORD_CHANNEL_EL_DORADO=1498822480587002038
 DISCORD_CHANNEL_OWSLEY_LAB=1498822512442609694
 ```
 
-**ruggy-prod only:**
-```
-ENV=production
-DISCORD_BOT_TOKEN=<token for ruggy-prod>
-DISCORD_CHANNEL_STONEHENGE=1497618160592097464
-DISCORD_CHANNEL_BEAR_CAVE=1497618042560188517
-DISCORD_CHANNEL_EL_DORADO=1497618131269718106    # discord display: "agora"
-DISCORD_CHANNEL_OWSLEY_LAB=1497617952831176777
-```
+Both characters fire on the same cron schedule. Pattern B's per-character webhook override means each character's posts visually appear with their own avatar+username while the shell process serves both. Since this is V0.6-D phase 1 (no router/reaction yet), characters don't @-mention or interact with each other — just cron-driven independent cadence.
 
-Code-side zone IDs stay `el-dorado` even when production Discord displays the channel as `agora` — channel IDs are what matter; display names are cosmetic.
+### 5. Validate first deploy
 
-### Iteration loop
+After env is set, Railway redeploys. Watch staging-shell logs:
 
 ```
-1. develop locally                 LLM_PROVIDER=anthropic with real keys
-2. push to main                    auto-deploys ruggy-staging
-3. validate in purupuru server     digest, micro, callout — peep voice + emoji
-4. when staging proves out         manual deploy ruggy-prod via Railway UI
-5. monitor THJ channels            same code, prod identity
+─── freeside-characters bot · v0.6.0-A ────────────────────────
+characters:     Ruggy · Satoshi (primary: ruggy)
+data:           LIVE (score-mcp)
+llm:            anthropic-direct (claude-sonnet-4-6)
+zones:          🗿 stonehenge · 🐻 bear-cave · ⛏️ el-dorado · 🧪 owsley-lab
+digest cadence: weekly · sunday 00:00 UTC
+delivery:       BOT (4/4 zones mapped: ...)
+persona:        loaded (NNNNN chars · MMM codex lines)
+discord:        bot client connected (Ruggy#1157)
+ruggy: digest cron · 0 0 * * 0
+ruggy: pop-in cron · 0 */6 * * *
 ```
 
-Rollback if needed: Railway → Deployments → redeploy a prior successful build.
+Note: V0.6-D phase 1 dispatches all fires through the **primary** character only (the first one in `CHARACTERS`). Phase 2 (router) adds per-character cron dispatch by affinity + mention parsing. For now `CHARACTERS=ruggy,satoshi` means both load but only `ruggy` fires; satoshi loaded but quiet.
 
-### Health checks
+To exercise satoshi's path: change `CHARACTERS=satoshi` and redeploy briefly. Both characters use the same shared webhook per channel; satoshi's posts will appear with his per-character override (once `webhookAvatarUrl` is set).
+
+## V0.6-D deferred to post-observation
+
+Per operator pick 2026-04-30 (after gemini deep research dig on shell pattern), Phase 2 ships AFTER cron-driven Pattern B is observed in staging:
+
+- **Router** (`apps/bot/src/router.ts`) — Gateway message listener; content-name parser (e.g. "satoshi, what do you make of this?" → dispatch satoshi). Design open: what does the character POST when mentioned? probably a new compose path that takes user-message context.
+- **Reaction handler** (`apps/bot/src/reaction-handler.ts`) — PluralKit-canonical: react ❓ to a webhook post → bot DMs the reactor with the true author identity (character id + codex anchor). Substitutes for the right-click-profile affordance Discord webhooks lack.
+- **Per-webhook burst queue** — token bucket parsing `X-RateLimit-Remaining` + `Retry-After` to handle the 5/2sec rate limit when bursts of dialogue happen in one channel. discord.js handles some of this internally but not optimally for multi-character bursts.
+- **File-based JSONL memory v1** — per-character storage in `apps/bot/.run/memory/<character>/` with the 4-way matrix (human↔agent · agent→world · world→agent · agent↔agent). Cross-character read so ruggy can reference satoshi's stonehenge posts without inventing them.
+
+These get spec'd informed by what we observe in cron-driven Pattern B. The seed §5 V0.6-D scope was speculative; observation tightens the design.
+
+## Iteration loop
+
+```
+1. develop locally on staging branch        CHARACTERS=ruggy,satoshi
+2. push to origin/staging                    auto-deploys staging-shell
+3. observe in project purupuru guild         per-character voice + avatar + cadence
+4. iterate freely on staging branch          prod-ruggy untouched
+5. when V0.6-D proves out                    fast-forward merge staging → main
+                                              + manually redeploy prod-ruggy
+6. monitor THJ channels                      same code, prod identity
+```
+
+Rollback: Railway → Deployments → redeploy a prior successful build.
+
+## Health checks
 
 The bot doesn't expose HTTP healthz (Discord gateway client). Railway monitors process liveness; restart policy = `ON_FAILURE`, max 10 retries. Beyond that, monitor:
-- `[ruggy] discord client ready as <name>` log on each restart
+
+- `discord client ready as <name>` log on each restart
 - weekly digest sweep (sunday 00:00 UTC by default)
 - pop-in cadence (~1-2/day per zone)
+- webhook fetch/create logs at boot (one per zone the bot posts to)
 
-### Ephemeral state
+## Ephemeral state
 
-`apps/bot/.run/emoji-recent.jsonl` (cross-process emoji-variance cache) lives on the container's writable filesystem. Resets on each deploy/restart — that's fine; the cache only buys within-deploy variance.
+`apps/bot/.run/emoji-recent.jsonl` (cross-process emoji-variance cache) lives on the container's writable filesystem. Resets on each deploy/restart — fine; the cache only buys within-deploy variance.
 
-### Cost guidance
+V0.6-D Phase 2 (deferred) introduces per-character JSONL memory under `apps/bot/.run/memory/<character>/`. Same ephemeral story until jani's storage architecture lands.
 
-- Railway: 2 services × 512MB-1GB RAM × ~$5/GB/mo ≈ $5-10/mo each
-- Anthropic API: ~$0.05-0.20 per fire (medium effort, 4-6 tool calls). Weekly 4-zone sweep + ~1-2 pop-ins/day per zone ≈ $5-10/mo
-- Total: **~$15-30/mo combined** before any future scale-up
+## Cost guidance
+
+- Railway: 2 services × 512MB-1GB RAM × ~$5/GB/mo ≈ $5-10/mo each (~$10-20/mo total)
+- Anthropic API: ~$0.05-0.20 per fire (medium effort, 4-6 tool calls).
+  - prod-ruggy: weekly 4-zone sweep + ~1-2 pop-ins/day per zone ≈ $5-10/mo
+  - staging-shell: 2 characters × same cadence ≈ $10-15/mo (satoshi's slower cadence per ledger reduces this in V0.6-D phase 2)
+- Total: **~$25-45/mo combined** before any future scale-up
+
+## Webhook rate limits (Pattern B specifics)
+
+Discord enforces 5 webhook executes per 2 seconds per webhook (top-level resource, scoped to webhook_id). For typical character cadence (1-10 posts/day per character × 4 channels) this is trivial. The limit bites when:
+
+- Multiple characters post in the same channel within a 2-second window (e.g. burst dialogue)
+- A weaver-event causes coordinated cross-character posts
+
+Phase 2's burst queue handles this with token-bucket per webhook + `Retry-After` parsing. Phase 1 relies on cron's natural pacing (digests sunday-only; pop-ins ~6h tick) which never hits the limit organically.
+
+Cloudflare ban threshold: 10,000 invalid requests per 10 minutes terminates outbound connections from the host. Phase 1 won't approach this; only buggy retry storms would.
+
+## ECS migration (deferred)
+
+Steps mirror the honeyroad migration:
+
+1. Add `world-freeside-characters.tf` to `loa-freeside/infrastructure/terraform/` with one module per service
+2. Author `world-freeside-characters-secrets.tf` with the env keys (mirror Railway env)
+3. Fork `loa-freeside/scripts/load-honeyroad-secrets.sh`
+4. CI workflow — fork `loa-freeside/ci-templates/world-deploy.yml` into `.github/workflows/deploy.yml`
+5. `terraform plan` + `terraform apply` — coordinate ALB-less variant with jani (bot doesn't need ALB)
+6. Push image — first deploy via GHA workflow_dispatch
+7. Validate — bot logs in CloudWatch; first cron sweep across mapped channels
+
+ECS gives stronger isolation + observability; Railway is faster for V0.6 iteration.
 
 ## Future zones (when score-mibera adds tl + irl)
 
 Operator confirmed prep for 5 dim zones + stonehenge hub. When tl (Timeline) and irl (Poppy Field) ship in score-mibera and Eileen names the Discord channels:
 
-1. Add `tl` / `irl` to `apps/bot/src/score/types.ts` (`ZoneId`, `ZONE_TO_DIMENSION`, `ZONE_FLAVOR`)
-2. Add KANSEI vocab to `apps/bot/src/agent/rosenzu/lynch-primitives.ts`
-3. Add channel ID env vars to both Railway services
+1. Add `tl` / `irl` to `packages/persona-engine/src/score/types.ts` (`ZoneId`, `ZONE_TO_DIMENSION`, `ZONE_FLAVOR`)
+2. Add KANSEI vocab to `packages/persona-engine/src/orchestrator/rosenzu/lynch-primitives.ts`
+3. Add channel ID env vars to staging-shell (and prod-ruggy when promoted)
 4. Update `.env.example` + this doc
 
 The architecture supports vocab-only zones (see gumi's `the-warehouse` in `lynch-primitives.ts`) so there's no big-bang change.
+
+## Per-character cadence reference
+
+| character | digest | pop-ins | weaver | notes |
+|---|---|---|---|---|
+| ruggy | weekly Sun 00:00 UTC, all 4 zones | ~10% per 6h tick | optional Wed mid-week, stonehenge | warm OG register · TTRPG-DM scene-gen · custom emoji |
+| satoshi | optional (only on structural week-shape) | rare, only on cross-zone movement | natural register, weekly Wed | sparse · gnomic · cypherpunk-coded · NO emoji decoration |
+
+See `apps/character-{ruggy,satoshi}/ledger.md` for full cadence specifics.
+
+V0.6-D phase 1 limitation: only the **primary** character (first in CHARACTERS env) fires on cron. Phase 2's router adds per-character affinity dispatch.
