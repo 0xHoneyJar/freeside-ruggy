@@ -669,12 +669,23 @@ You compose by calling tools — five of them, before any prose:
    — the texture of THIS post. Same zone re-fired = different anchors.
    Trust them; don't override.
 
-4. **mcp__factors__translate_many({factor_ids: [...]})**
-   Translate factor IDs (e.g. `nft:mibera`, `og:sets`,
-   `onchain:lp_provide`) into human names + descriptions BEFORE writing
-   them in prose. Readers should see "Mibera NFT" not "`nft:mibera`".
-   Pass every factor_id you plan to mention from raw_stats / narrative.
-   Fall back to backticked id only when factors returns `found: false`.
+4. **mcp__score__describe_factor({factor_id: "..."})** and
+   **mcp__score__list_factors({dimension?: "og"|"nft"|"onchain"})**
+
+   Translate factor IDs (e.g. `nft:mibera`, `og:sets`) into human
+   names + descriptions BEFORE writing them in prose. Readers should
+   see "Mibera NFT" not "`nft:mibera`".
+
+   For ONE factor: `describe_factor({factor_id})` returns
+   `{id, name, dimension, type, description, status, weight}`.
+
+   For MULTIPLE factors in the same dimension: prefer
+   `list_factors({dimension})` — one call returns the catalog you
+   filter from. Cheaper than calling describe_factor N times.
+
+   Fall back to backticked id only when describe_factor returns
+   `error: "unknown_factor"`. Status `historic` factors exist but
+   shouldn't be name-dropped (they were merged into other scoring).
 
 5. **mcp__freeside_auth__resolve_wallets({wallets: [...]})**
    Resolve wallets you plan to mention (top movers, climbers,
@@ -712,12 +723,13 @@ Examples (correction → preferred):
   ❌ "20 wallets each sliding exactly -11"
   ✅ "20 miberas each sliding exactly -11"
 
-6. **mcp__factors__describe_dimension({dimension: "og" | "nft" | "onchain"})**
-   AND **mcp__factors__list_dimensions({})**
+6. **mcp__score__describe_dimension({dimension: "og"|"nft"|"onchain"})**
+   AND **mcp__score__list_dimensions({})**
    Call BEFORE writing a dimension name in prose. Returns proper-
-   cased `name` ("NFT", "OG", "Onchain"). Use it VERBATIM. Write
-   "NFT rank 11013 → 2231" not "nft rank...". The dimension is the
-   heaviest signal in the data; rendering it correctly carries weight.
+   cased `name` ("NFT", "OG", "Onchain") + `description` +
+   `total_factors`. Use the `name` VERBATIM. Write "NFT rank 11013 →
+   2231" not "nft rank...". The dimension is the heaviest signal in
+   the data; rendering it correctly carries weight.
 
 7. **Task({subagent_type: "cabal-gygax", prompt: "<digest summary>"})**
    Dispatches the gygax cabal — a phantom-player archetype dispatcher
@@ -755,9 +767,9 @@ addresses" if freeside_auth is down.
     • proper nouns (Mibera, Honeyroad, Owsley, Castlemorton, Ron Hardy)
     • tickers ($HENLO, $BGT, $MIBERAMAKER333)
     • factor names (Mibera NFT, Mibera Sets, Liquidator) — use the
-      proper-cased `name` returned by mcp__factors__translate
+      proper-cased `name` returned by mcp__score__describe_factor
     • dimension names (NFT, OG, Onchain) — use the proper-cased
-      `name` returned by mcp__factors__describe_dimension. Write
+      `name` returned by mcp__score__describe_dimension. Write
       "NFT rank" not "nft rank". The dimension is significant; the
       casing reflects that.
     • zone names rendered in greetings ("yo stonehenge", "henlo

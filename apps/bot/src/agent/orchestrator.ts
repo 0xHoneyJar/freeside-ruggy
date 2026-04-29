@@ -30,7 +30,6 @@ import type { Config } from '../config.ts';
 import type { ZoneId } from '../score/types.ts';
 import type { PostType } from '../llm/post-types.ts';
 import { rosenzuServer } from './rosenzu/server.ts';
-import { factorsServer } from './factors/server.ts';
 import { freesideAuthServer } from './freeside_auth/server.ts';
 import { emojisServer } from './emojis/server.ts';
 import { cabalGygaxAgent } from './cabal/gygax.ts';
@@ -61,7 +60,6 @@ export interface OrchestratorResponse {
 function buildMcpServers(config: Config): Record<string, McpServerConfig> {
   const servers: Record<string, McpServerConfig> = {
     rosenzu: rosenzuServer,
-    factors: factorsServer,
     freeside_auth: freesideAuthServer,
     emojis: emojisServer,
   };
@@ -70,6 +68,12 @@ function buildMcpServers(config: Config): Record<string, McpServerConfig> {
   // this in V0.4.x but its scope was the data layer's stub generator,
   // not the LLM tool-call layer. With MCP_KEY present, the LLM has a
   // real backend; STUB_MODE alone shouldn't strip it.
+  //
+  // V0.5-E: score-mcp v1.1.0 (zerker's PR #71, merged 2026-04-29) added
+  // factor + dimension catalog tools (describe_factor, list_factors,
+  // describe_dimension, list_dimensions). Ruggy's previous in-bot
+  // factors mcp was a vendored translation table — retired now that
+  // score is the canonical writer per UNIX self-description doctrine.
   if (config.MCP_KEY) {
     servers.score = {
       type: 'http',
