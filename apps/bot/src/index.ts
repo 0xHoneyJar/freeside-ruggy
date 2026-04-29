@@ -14,6 +14,7 @@ import { composeZonePost } from './llm/composer.ts';
 import { deliverZoneDigest } from './discord/post.ts';
 import { schedule, type FireRequest } from './cron/scheduler.ts';
 import { loadSystemPrompt } from './persona/loader.ts';
+import { exemplarStats } from './persona/exemplar-loader.ts';
 import { getBotClient, shutdownClient } from './discord/client.ts';
 import { ZONE_FLAVOR } from './score/types.ts';
 import { getCodexLineCount } from './score/codex-context.ts';
@@ -35,7 +36,13 @@ async function main(): Promise<void> {
   try {
     const prompt = loadSystemPrompt();
     const codexLines = getCodexLineCount();
-    console.log(`persona:        loaded (${prompt.length} chars + ${codexLines} codex lines)`);
+    const exemplars = exemplarStats();
+    const exemplarTotal = Object.values(exemplars).reduce((s, n) => s + n, 0);
+    const exemplarSummary = exemplarTotal === 0
+      ? 'no exemplars (ICE off — rules-only voice)'
+      : Object.entries(exemplars).filter(([, n]) => n > 0).map(([t, n]) => `${t}:${n}`).join(' · ');
+    console.log(`persona:        loaded (${prompt.length} chars · ${codexLines} codex lines)`);
+    console.log(`exemplars:      ${exemplarSummary}`);
   } catch (err) {
     console.error('persona/codex load failed:', err);
     process.exit(1);

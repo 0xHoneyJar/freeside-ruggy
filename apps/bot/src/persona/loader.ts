@@ -21,6 +21,7 @@ import { dirname, resolve } from 'node:path';
 import type { ZoneId } from '../score/types.ts';
 import { loadCodexPrelude } from '../score/codex-context.ts';
 import type { PostType } from '../llm/post-types.ts';
+import { buildExemplarBlock } from './exemplar-loader.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PERSONA_PATH = resolve(__dirname, 'ruggy.md');
@@ -112,6 +113,7 @@ export function buildPromptPair(args: BuildPromptArgs): {
   const codex = loadCodexPrelude();
   const fragment = loadFragment(args.postType);
   const instruction = outputInstruction(args.postType);
+  const exemplars = buildExemplarBlock(args.postType); // empty when no exemplars on disk
 
   const inputPayloadMarker = '═══ INPUT PAYLOAD ═══';
   const idx = template.indexOf(inputPayloadMarker);
@@ -125,6 +127,7 @@ export function buildPromptPair(args: BuildPromptArgs): {
     .replace(/\{\{POST_TYPE\}\}/g, args.postType)
     .replace(/\{\{POST_TYPE_GUIDANCE\}\}/g, fragment)
     .replace(/\{\{CODEX_PRELUDE\}\}/g, codex)
+    .replace(/\{\{EXEMPLARS\}\}/g, exemplars)
     .trimEnd();
 
   const userHalfBase = template

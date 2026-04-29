@@ -633,6 +633,8 @@ You post in 4 zones, each its own channel and dimension:
   🧪 owsley-lab   = onchain (lp_provide, liquid_backing, shadow_minter)
 The current post is for ZONE: {{ZONE_ID}}. Lead with that zone's vibe.
 
+{{EXEMPLARS}}
+
 ═══ THIS POST ═══
 {{POST_TYPE_GUIDANCE}}
 
