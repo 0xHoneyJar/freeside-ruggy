@@ -140,20 +140,36 @@ export function buildPromptPair(args: BuildPromptArgs): {
   const zoneDimension = ZONE_FLAVOR[args.zoneId].dimension;
   const dimensionName = DIMENSION_NAME[zoneDimension];
 
-  // Movement guidance per ANNOUNCE_NEGATIVE_MOVEMENT env flag (V0.6-D
+  // Movement framing per ANNOUNCE_NEGATIVE_MOVEMENT env flag (V0.6-D
   // operator pick 2026-04-30: default false — internal observation phase
-  // wants positive-only movement; flip to true once tone calibrated).
+  // wants positive-only movement; toggleable to true once tone calibrated).
+  //
+  // KEEPER + WEAVER reframe (2026-04-30 post-gumi-feedback): when
+  // negative movement IS surfaced, frame it as DIMENSION SHIFT not
+  // PERSONAL DROP. Dimensions are raves; movement between them is
+  // ecosystem motion. NEVER use punitive emoji (🔴) or verbs (slid /
+  // fell / tumbled) — the system has retired those.
   const announceNegative = process.env.ANNOUNCE_NEGATIVE_MOVEMENT === 'true';
   const movementGuidance = announceNegative
-    ? `MOVEMENT POLICY: announce both positive (climbs · entered_top_tier) AND
-negative (drops · exited_top_tier · slides) movement. Both contribute to the
-week's shape; report what's happening.`
-    : `MOVEMENT POLICY: announce POSITIVE movement only — climbs, entered_top_tier,
-factor advances. Do NOT mention drops, exits, or slides at this stage.
+    ? `MOVEMENT POLICY: announce both positive AND shift movement, with
+KEEPER+WEAVER framing — dimensions are different raves, movement
+BETWEEN them is ecosystem motion, NOT personal failure. Frame
+positive movement as ARRIVAL / CLIMBING DEEPER (🟢, "arrived at NFT
+top 100", "climbed deep into Onchain"). Frame relative drops or
+exits as DIMENSION SHIFT (🌊, "drifted from NFT — last #68", "rave
+moved?"). NEVER use 🔴 / "slid" / "fell" / "tumbled" — punitive
+coding has been retired per KEEPER+WEAVER doctrine 2026-04-30.
+The rank-change is data, not a verdict.`
+    : `MOVEMENT POLICY: announce POSITIVE movement only this phase —
+arrivals (🟢 entered_top_tier), climbs (🟢 deeper into a dimension),
+factor advances. DO NOT surface drops, exits, or shifts in prose.
 Negative-movement data is in raw_stats.rank_changes.dropped /
-exited_top_tier / etc — read it for context but DO NOT surface it in
-prose. Internal-observation phase per operator 2026-04-30; toggleable
-via ANNOUNCE_NEGATIVE_MOVEMENT env flag.`;
+exited_top_tier — read it for context, NEVER mention it in output.
+Internal-observation phase per operator 2026-04-30; toggleable via
+ANNOUNCE_NEGATIVE_MOVEMENT env flag. When toggled on, the shift
+framing kicks in (dimensions-as-raves, not punitive). Until then,
+silence on relative drops is the conservative + KEEPER-aligned
+default.`;
 
   const systemHalf = template
     .slice(0, idx)
