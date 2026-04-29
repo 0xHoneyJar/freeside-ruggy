@@ -118,7 +118,7 @@ export const emojisServer = createSdkMcpServer({
 
     tool(
       'pick_by_mood',
-      'Returns custom Discord emojis matching a mood. Pass `mood` and optionally narrow by `kind`. Pass `scope` (e.g. zone name like "stonehenge") and the server AUTOMATICALLY filters out emojis recently used in that scope — cross-process variance. Results are shuffled. Use the returned `render` string verbatim.',
+      'Returns ONE random emoji matching a mood. Pass `mood` and optionally narrow by `kind`. Pass `scope` (typically zone name) — server auto-excludes emojis recently used in that scope. Use the returned `render` string verbatim.\n\nIMPORTANT: this returns ONE random pick, not a list. Trust the pick — do not call repeatedly looking for a "better fit". The variance IS the point.\n\nIf you want to browse all candidates instead, call `list_all` with a kind filter.',
       {
         mood: MoodSchema.describe('Mood tag to filter by'),
         kind: KindSchema.optional().describe('Optionally narrow to mibera or ruggy emojis only'),
@@ -131,14 +131,24 @@ export const emojisServer = createSdkMcpServer({
         const matches = pickByMood(mood as EmojiMood, kind as EmojiKind | undefined).filter(
           (e) => !autoExclude.has(e.name) && !manualExclude.has(e.name),
         );
-        const shuffled = shuffle(matches);
+        if (matches.length === 0) {
+          return ok({
+            found: false,
+            mood,
+            kind: kind ?? 'any',
+            scope: scope ?? null,
+            recent_excluded: [...autoExclude],
+            hint: 'No emoji matches the filters; try a different mood or use random_pick',
+          });
+        }
+        const pick = matches[Math.floor(Math.random() * matches.length)]!;
         return ok({
+          found: true,
           mood,
-          kind: kind ?? 'any',
           scope: scope ?? null,
           recent_excluded: [...autoExclude],
-          count: shuffled.length,
-          emojis: shuffled.map(entryToView),
+          pool_size: matches.length,
+          ...entryToView(pick),
         });
       },
     ),
