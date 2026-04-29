@@ -35,37 +35,53 @@ const SECTION_HEADER = '## System prompt template';
 const docCache = new Map<string, string>();
 const templateCache = new Map<string, string>();
 const voiceAnchorsCache = new Map<string, string>();
+const codexAnchorsCache = new Map<string, string>();
 
 /**
- * Load `voice-anchors.md` if it exists alongside the character's persona.md.
- *
- * Voice anchors are operator-curated cross-post-type voice texture grounding
- * — past character utterances that calibrate "is this character?" without
- * being post-type-specific exemplars. Distinct from ICE exemplars (which are
- * per-post-type · injected via {{EXEMPLARS}}).
- *
- * V0.6-D voice/v5+ (2026-04-30): operator added voice-anchors.md to ruggy
- * with old reactive-reply samples to ground voice texture. Auto-discovered by
- * convention (no CharacterConfig field needed) — if a character has
- * `voice-anchors.md` next to its persona.md, it gets injected. Empty string
- * if absent (graceful · most characters won't have it).
- *
- * Trajectory note (V0.7+ daemon-stage): voice anchors become "voice template
- * DNA" that the dNFT metadata points at. Today's markdown is tomorrow's
- * structured template-engine input.
+ * Load a sibling-of-persona markdown file by convention. Used by both
+ * voice-anchors and codex-anchors loaders — the same auto-discover pattern.
+ * Returns empty string when absent (graceful · most characters won't have all).
  */
-function loadVoiceAnchors(personaPath: string): string {
-  const cached = voiceAnchorsCache.get(personaPath);
+function loadSiblingMarkdown(
+  personaPath: string,
+  filename: string,
+  cache: Map<string, string>,
+): string {
+  const cached = cache.get(personaPath);
   if (cached !== undefined) return cached;
 
-  const anchorsPath = resolve(dirname(personaPath), 'voice-anchors.md');
-  if (!existsSync(anchorsPath)) {
-    voiceAnchorsCache.set(personaPath, '');
+  const filePath = resolve(dirname(personaPath), filename);
+  if (!existsSync(filePath)) {
+    cache.set(personaPath, '');
     return '';
   }
-  const content = readFileSync(anchorsPath, 'utf8');
-  voiceAnchorsCache.set(personaPath, content);
+  const content = readFileSync(filePath, 'utf8');
+  cache.set(personaPath, content);
   return content;
+}
+
+/**
+ * voice-anchors.md — operator-curated cross-post-type VOICE TEXTURE grounding.
+ * Past character utterances that calibrate "is this character?" — distinct from
+ * per-post-type ICE exemplars (which calibrate "is this a digest?").
+ */
+function loadVoiceAnchors(personaPath: string): string {
+  return loadSiblingMarkdown(personaPath, 'voice-anchors.md', voiceAnchorsCache);
+}
+
+/**
+ * codex-anchors.md — per-character mibera-codex SOIL grounding. The codex
+ * prelude ({{CODEX_PRELUDE}}) loads a substrate-wide schema index. This file
+ * is character-specific lore tilts: which archetypes resonate, which ancestor
+ * lineage they live in, which factor → lore mappings their voice should pull.
+ *
+ * V0.6 character-stage: text-as-anchor (codex IS character memory).
+ * V0.7+ daemon-stage: this file becomes voice template DNA the dNFT points at.
+ *
+ * Mirrors voice-anchors auto-discover. Empty string if absent.
+ */
+function loadCodexAnchors(personaPath: string): string {
+  return loadSiblingMarkdown(personaPath, 'codex-anchors.md', codexAnchorsCache);
 }
 
 function loadDoc(personaPath: string): string {
@@ -159,6 +175,7 @@ export function buildPromptPair(args: BuildPromptArgs): {
   const instruction = outputInstruction(args.postType);
   const exemplars = buildExemplarBlock(character, args.postType); // empty when no exemplars on disk
   const voiceAnchors = loadVoiceAnchors(character.personaPath);  // empty when voice-anchors.md absent
+  const codexAnchors = loadCodexAnchors(character.personaPath);  // empty when codex-anchors.md absent
 
   const inputPayloadMarker = '═══ INPUT PAYLOAD ═══';
   const idx = template.indexOf(inputPayloadMarker);
@@ -206,28 +223,36 @@ framing kicks in (dimensions-as-raves, not punitive). Until then,
 silence on relative drops is the conservative + KEEPER-aligned
 default.`;
 
+  // Substitution order matters: BLOCK INJECTIONS first (fragment + anchors +
+  // codex + exemplars), then per-zone substitutions. This way any {{ZONE_NAME}}
+  // / {{DIMENSION}} placeholders embedded in the injected blocks (e.g., the
+  // digest fragment's headline shape `yo {{ZONE_NAME}} ({{DIMENSION}}) ...`)
+  // also get substituted in the final prompt — no leak of literal placeholder
+  // syntax to the LLM.
   const systemHalf = template
     .slice(0, idx)
+    .replace(/\{\{POST_TYPE_GUIDANCE\}\}/g, fragment)
+    .replace(/\{\{MOVEMENT_GUIDANCE\}\}/g, movementGuidance)
+    .replace(/\{\{VOICE_ANCHORS\}\}/g, voiceAnchors)
+    .replace(/\{\{CODEX_ANCHORS\}\}/g, codexAnchors)
+    .replace(/\{\{CODEX_PRELUDE\}\}/g, codex)
+    .replace(/\{\{EXEMPLARS\}\}/g, exemplars)
     .replace(/\{\{ZONE_ID\}\}/g, args.zoneId)
     .replace(/\{\{ZONE_NAME\}\}/g, zoneName)
     .replace(/\{\{DIMENSION\}\}/g, dimensionName)
     .replace(/\{\{POST_TYPE\}\}/g, args.postType)
-    .replace(/\{\{POST_TYPE_GUIDANCE\}\}/g, fragment)
-    .replace(/\{\{MOVEMENT_GUIDANCE\}\}/g, movementGuidance)
-    .replace(/\{\{VOICE_ANCHORS\}\}/g, voiceAnchors)
-    .replace(/\{\{CODEX_PRELUDE\}\}/g, codex)
-    .replace(/\{\{EXEMPLARS\}\}/g, exemplars)
     .trimEnd();
 
   const userHalf = template
     .slice(idx)
+    .replace(/\{\{POST_TYPE_OUTPUT_INSTRUCTION\}\}/g, instruction)
+    .replace(/\{\{MOVEMENT_GUIDANCE\}\}/g, movementGuidance)
+    .replace(/\{\{VOICE_ANCHORS\}\}/g, voiceAnchors)
+    .replace(/\{\{CODEX_ANCHORS\}\}/g, codexAnchors)
     .replace(/\{\{ZONE_ID\}\}/g, args.zoneId)
     .replace(/\{\{ZONE_NAME\}\}/g, zoneName)
     .replace(/\{\{DIMENSION\}\}/g, dimensionName)
     .replace(/\{\{POST_TYPE\}\}/g, args.postType)
-    .replace(/\{\{POST_TYPE_OUTPUT_INSTRUCTION\}\}/g, instruction)
-    .replace(/\{\{MOVEMENT_GUIDANCE\}\}/g, movementGuidance)
-    .replace(/\{\{VOICE_ANCHORS\}\}/g, voiceAnchors)
     .trim();
 
   return {
