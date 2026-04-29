@@ -1,0 +1,230 @@
+schema_version: "0.1.0"
+kind: construct-consumer-manifest
+consumer: freeside-ruggy
+consumer_kind: persona-bot
+description: >
+  Persona-bot for the THJ ecosystem (zone-channel digests + pop-ins).
+  Consumes constructs across multiple load patterns per V0.5 SDK
+  migration architecture (Claude Agent SDK + tripartite locus).
+
+# ──────────────────────────────────────────────────────────────────────
+# Constructs ruggy consumes — declared by load pattern + role
+# ──────────────────────────────────────────────────────────────────────
+
+consumes:
+  - name: mibera-codex
+    repo: 0xHoneyJar/construct-mibera-codex
+    role: vocabulary
+    load: bundled-files
+    persona: (codex-as-content; no persona)
+    rationale: |
+      Lore vocabulary loaded as ambient knowledge. Tripartite locus =
+      VOCABULARY layer. Per Gemini research pushback (2026-04-28),
+      codex provides Lynch primitives + KANSEI tokens + archetype
+      anchors as INPUTS to arneson's scene generation; codex does
+      NOT author canonical descriptions.
+    bundled_files:
+      - source: llms.txt
+        target: apps/bot/src/score/codex-llms.txt
+        status: bundled (V0.4.5)
+      - source: core-lore/festival-zones-vocabulary.md
+        target: apps/bot/src/score/codex-festival-zones.md
+        status: pending operator authoring (V0.5-B blocker)
+
+  - name: arneson
+    repo: 0xHoneyJar/construct-arneson
+    role: narrative-skill
+    load: claude-agent-sdk-skill
+    persona: BEAUVOIR/Arneson
+    install_path: ~/.loa/constructs/packs/arneson
+    use_path: apps/bot/.claude/skills/arneson/SKILL.md  # V0.5-B target
+    rationale: |
+      TTRPG narrative instrument. Tripartite locus = LENS layer.
+      Per-post env-gen and voice authoring. Stateless transformation
+      guidelines — fits SDK Skill primitive perfectly. Progressive
+      disclosure keeps active context lean.
+    skills_consumed:
+      - /scene   # scene-from-seed grounding
+      - /voice   # NPC persistence model
+      - /narrate # fiction-mechanics-fiction primitive (= ruggy's rewrite arch)
+    skills_skipped:
+      - /braunstein  # too session-heavy for stagehand role
+      - /distill     # gygax composition glue; not needed standalone
+      - /improvise   # unnecessary multi-turn machinery
+      - /fragment    # unnecessary
+
+  - name: rosenzu
+    repo: 0xHoneyJar/construct-rosenzu
+    role: spatial-mcp
+    load: remote-http-mcp
+    persona: LYNCH
+    install_path: ~/.loa/constructs/packs/rosenzu
+    deploy:
+      preferred: freeside-ecs
+      fallback: railway
+      service_path: mcp/rosenzu  # V0.5-B target
+    auth:
+      url_env: ROSENZU_MCP_URL
+      key_env: ROSENZU_KEY
+    rationale: |
+      Spatial awareness. Tripartite locus = topology PRECONDITION.
+      Live channel-state telemetry needs executable code + Discord
+      API integration — must be remote MCP service, not static
+      vocabulary. Lynch primitives (paths/edges/districts/nodes/
+      landmarks) translate Discord topology to physical geography.
+    tools_exposed:
+      - get_current_district
+      - audit_spatial_threshold
+      - fetch_landmarks
+      - furnish_kansei  # returns per-zone warmth/motion/shadow tokens
+      - threshold       # departure → door → arrival transitions
+    invariant: |
+      Topology check MUST run before any post-generation
+      (anti-pattern: spatial-blindness).
+
+  - name: gygax
+    repo: 0xHoneyJar/construct-gygax
+    role: subagent
+    load: claude-agent-sdk-agent-definition
+    persona: GYGAX
+    install_path: ~/.loa/constructs/packs/gygax
+    use_path: apps/bot/src/agent/subagents/gygax.ts  # V0.5-C target
+    model: claude-haiku-4-5-20251001  # cheap analytical pass
+    rationale: |
+      Game systems analyst. Token-heavy /cabal simulation needs
+      isolated context window — fits SDK AgentDefinition primitive.
+      Cheap Haiku model keeps cost down per fire. Returns lens
+      recommendation to orchestrator, which passes to arneson.
+    skills_consumed:
+      - /cabal    # 9-archetype phantom-player simulation
+      - /attune   # ingest helpers (pre-step)
+      - /scry     # forked design experiments (V0.6+ optional)
+    skills_skipped:
+      - /augury   # quantitative balance — not ruggy's domain
+      - /lore     # TTRPG-specific heuristic libraries
+    output_shape: |
+      { archetype_lens: 'optimizer'|'storyteller'|'chaos-agent'|...,
+        pacing_recommendation: 'fast'|'measured'|'slow',
+        experience_signal_flags: [...] }
+
+# ──────────────────────────────────────────────────────────────────────
+# External services ruggy depends on (not constructs but load-bearing)
+# ──────────────────────────────────────────────────────────────────────
+
+depends_on_services:
+  - name: score-mcp
+    url: https://score-api-production.up.railway.app/mcp
+    auth: X-MCP-Key
+    owner: zerker (0xHoneyJar/score-api @ feature/score-mcp)
+    role: data-trigger
+    tripartite_layer: TRIGGER  # tripartite locus: data side
+    tools_consumed:
+      - get_zone_digest
+      - get_recent_activity
+      - get_leaderboard_changes
+      - get_wallet_spotlight
+      - get_factor_trends
+    status: deployed-and-live (2026-04-28 evening)
+
+  - name: freeside-agent-gateway
+    url: https://api.freeside.0xhoneyjar.xyz/api/agents/invoke
+    auth: x-api-key (FREESIDE_API_KEY)
+    owner: jani (0xHoneyJar/loa-freeside)
+    role: production-llm
+    fallback: anthropic-direct (ANTHROPIC_API_KEY)
+    status: V0 via anthropic-direct; production path pending jani API key
+
+  - name: discord-gateway
+    auth: DISCORD_BOT_TOKEN
+    role: post-delivery
+    bot_user: ruggy#1157
+    bot_application_id: 1167377910232002591
+    channels:
+      stonehenge: "1498822402900230294"
+      bear-cave: "1498822450316578907"
+      el-dorado: "1498822480587002038"
+      owsley-lab: "1498822512442609694"
+
+# ──────────────────────────────────────────────────────────────────────
+# Tripartite locus (per Gemini research 2026-04-28; operator-confirmed)
+# ──────────────────────────────────────────────────────────────────────
+
+tripartite_locus:
+  vocabulary: mibera-codex      # lore-grounded names, Lynch primitives, KANSEI tokens
+  trigger: score-mcp            # live activity, state deltas, MCP tools
+  lens: arneson                 # per-post env-gen, voice authoring (Skill)
+
+# ──────────────────────────────────────────────────────────────────────
+# Composition pipeline (where each construct sits in the agent loop)
+# ──────────────────────────────────────────────────────────────────────
+
+composition_pipeline:
+  - position: precondition
+    construct: rosenzu
+    purpose: WHERE — topology check before any output
+  - position: pre-step (parallel)
+    construct: gygax
+    purpose: BALANCE — archetype lens choice
+  - position: input (bundled)
+    construct: mibera-codex
+    purpose: WHAT — vocabulary chunks (codex llms.txt + festival-zones-vocab)
+  - position: input (live)
+    service: score-mcp
+    purpose: WHEN — data triggers via mcpServers
+  - position: synthesis
+    construct: arneson
+    purpose: HOW — fiction-mechanics-fiction (skill-loaded)
+  - position: orchestrator
+    construct: ruggy (consumer-bot itself)
+    purpose: weaves all five into post
+
+# ──────────────────────────────────────────────────────────────────────
+# Anti-pattern enforcement (per Gemini research; V0.5-C guards)
+# ──────────────────────────────────────────────────────────────────────
+
+anti_patterns_guarded:
+  - id: panopticon-register
+    risk: surveillance creep — quantitative recitations of user activity
+    mitigation: semantic-compression sanitizer on memory writes (≤200 words/file, qualitative only)
+    location: apps/bot/src/format/sanitize-memory.ts (V0.5-C)
+  - id: static-vibe-attrition
+    risk: Westworld loop — same env description repeats, illusion shatters
+    mitigation: variance via state triggers + arneson seed shuffling + gygax lens rotation
+    location: arneson SKILL.md + orchestrator dispatch logic (V0.5-B/C)
+  - id: context-window-bloat
+    risk: lore dumping degrades reasoning + drives sycophantic tone
+    mitigation: progressive disclosure via SDK skills (skill loads only when triggered)
+    location: SDK settingSources config (V0.5-B)
+  - id: monolithic-corporate-voice
+    risk: breaking register on errors shatters immersion
+    mitigation: error handlers translate to in-universe metaphors
+    location: apps/bot/src/agent/error-translator.ts (V0.5-C)
+  - id: spatial-blindness
+    risk: posting wrong-zone content (e.g. owsley-lab content in bear-cave)
+    mitigation: rosenzu topology-check tool MUST run before post-gen
+    location: orchestrator pre-step (V0.5-B)
+
+# ──────────────────────────────────────────────────────────────────────
+# Schema drift detection
+# ──────────────────────────────────────────────────────────────────────
+
+schema_drift:
+  detection: |
+    Validate this manifest against:
+      • ~/.loa/constructs/packs/<name>/construct.yaml (each construct's manifest)
+      • Each construct's actual SKILL.md files for skills_consumed correctness
+      • score-mcp's actual tools/list output (compare against tools_consumed)
+      • freeside-ruggy/.env.example for env vars referenced
+  cadence: every V0.5 phase boundary (A → B → C transitions)
+
+# ──────────────────────────────────────────────────────────────────────
+# Provenance
+# ──────────────────────────────────────────────────────────────────────
+
+authored_at: "2026-04-28"
+authored_during: V0.5 kickoff seed session (post-creative-direction, post-gemini-research)
+authored_by: CURATOR (via session-close architectural pass)
+referenced_by:
+  - apps/bot/src/persona/ruggy.md  # add reference in V0.5-A
+  - apps/bot/src/persona/creative-direction.md  # add reference in V0.5-A
+  - bonfire/grimoires/bonfire/context/ruggy-v05-kickoff-seed-2026-04-28.md  # update at session resume
