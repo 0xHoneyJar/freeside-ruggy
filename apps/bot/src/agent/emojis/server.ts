@@ -95,7 +95,7 @@ function entryToView(e: ReturnType<typeof findByName> & {}) {
   return {
     name: e.name,
     kind: e.kind,
-    mood: e.mood,
+    moods: e.moods,
     animated: e.animated,
     visual: e.visual,
     use_when: e.use_when,
@@ -161,7 +161,7 @@ export const emojisServer = createSdkMcpServer({
             !autoExclude.has(e.name) &&
             !manualExclude.has(e.name) &&
             (kind ? e.kind === kind : true) &&
-            (moodSet ? moodSet.has(e.mood) : true),
+            (moodSet ? e.moods.some((m) => moodSet.has(m)) : true),
         );
         if (pool.length === 0) {
           return ok({ found: false, hint: 'No emoji matches the filters', recent_excluded: [...autoExclude] });
