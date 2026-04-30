@@ -88,6 +88,21 @@ function buildMcpServers(config: Config): Record<string, McpServerConfig> {
     };
   }
 
+  // codex-mcp v1 (gumi) — anti-hallucination lookup for narrative-bot
+  // consumers. Public read, no auth. 8 tools: lookup_zone /
+  // lookup_archetype / lookup_factor / lookup_grail / lookup_mibera /
+  // list_zones / list_archetypes / validate_world_element.
+  // Per-character scoping (ruggy:[score,codex], satoshi:[codex]) is
+  // V0.7-A.3 work — for now codex is bot-wide, available in any
+  // character's digest path when CODEX_MCP_URL is set. Chat-mode
+  // (composeReply) still bypasses MCPs entirely by design.
+  if (config.CODEX_MCP_URL) {
+    servers.codex = {
+      type: 'http',
+      url: `${config.CODEX_MCP_URL}/mcp`,
+    };
+  }
+
   return servers;
 }
 

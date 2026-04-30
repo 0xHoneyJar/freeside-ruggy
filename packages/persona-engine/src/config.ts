@@ -17,6 +17,19 @@ const ConfigSchema = z.object({
   SCORE_API_KEY: z.string().optional(),
   MCP_KEY: z.string().optional(),
 
+  // ─── codex-mcp (gumi — mibera-codex lookup, public, no auth) ──────────
+  /**
+   * HTTP base URL of the codex MCP server. When set, the orchestrator
+   * registers `mcp__codex__*` tools (lookup_zone, lookup_archetype,
+   * lookup_factor, lookup_grail, lookup_mibera, list_zones,
+   * list_archetypes, validate_world_element).
+   *
+   * Local dev: `http://localhost:3000` (run `bun run http` in
+   * `0xHoneyJar/construct-mibera-codex`). Railway: TBD when Path B ships.
+   * No auth header — codex is public-read.
+   */
+  CODEX_MCP_URL: z.string().url().optional(),
+
   // ─── freeside agent-gateway (jani — production LLM path) ──────────────
   FREESIDE_BASE_URL: z.string().url().default('https://api.freeside.0xhoneyjar.xyz'),
   FREESIDE_API_KEY: z.string().optional(),
