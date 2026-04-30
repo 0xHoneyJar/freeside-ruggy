@@ -35,6 +35,13 @@ export { schedule } from './cron/scheduler.ts';
 export { deliverZoneDigest, isDryRun } from './deliver/post.ts';
 export { getBotClient, shutdownClient } from './deliver/client.ts';
 
+// Webhook delivery primitives (V0.7-A.0 — slash replies use Pattern B too)
+export {
+  getOrCreateChannelWebhook,
+  sendChatReplyViaWebhook,
+  invalidateWebhookCache,
+} from './deliver/webhook.ts';
+
 // Config API
 export { loadConfig, getZoneChannelId, selectedZones } from './config.ts';
 

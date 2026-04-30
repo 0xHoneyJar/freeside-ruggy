@@ -26,6 +26,10 @@
 
 import {
   composeReply,
+  getBotClient,
+  getOrCreateChannelWebhook,
+  invalidateWebhookCache,
+  sendChatReplyViaWebhook,
   splitForDiscord,
   type CharacterConfig,
   type Config,
@@ -224,24 +228,33 @@ async function doReplyAsync(args: AsyncWorkerArgs): Promise<void> {
       return;
     }
 
-    const { chunks } = formatReply(character, result.chunks);
-
-    // PATCH first chunk on the deferred response.
-    await patchOriginal(interaction, ephemeral, chunks[0] ?? '');
-
-    // POST remaining chunks as follow-ups, throttled to stay under the
-    // 5-req/2-sec follow-up rate limit (Gemini DR 2026-04-30).
-    for (let i = 1; i < chunks.length; i++) {
-      await sleep(FOLLOW_UP_THROTTLE_MS);
-      await postFollowUp(interaction, ephemeral, chunks[i]!);
+    // Delivery routing:
+    //   - ephemeral=true   → interaction PATCH (webhooks can't be ephemeral ·
+    //                        invoker chose this · accepts shell identity)
+    //   - ephemeral=false  → Pattern B webhook (per-character avatar + username)
+    //                        with PATCH fallback if webhook delivery fails
+    if (ephemeral) {
+      await deliverViaInteraction(interaction, character, result.chunks, true);
+    } else {
+      try {
+        await deliverViaWebhook(interaction, config, character, channelId, result.chunks);
+      } catch (webhookErr) {
+        console.warn(
+          `interactions: ${character.id} webhook delivery failed · falling back to PATCH:`,
+          webhookErr,
+        );
+        invalidateWebhookCache(channelId);
+        await deliverViaInteraction(interaction, character, result.chunks, false);
+      }
     }
 
     console.log(
       `interactions: ${character.id} delivered · ` +
-        `channel=${channelId} chunks=${chunks.length} ` +
+        `channel=${channelId} chunks=${result.chunks.length} ` +
         `compose_ms=${result.contextUsed.durationMs} ` +
         `total_ms=${Date.now() - t0} ` +
-        `ledger=${result.contextUsed.ledgerSize}`,
+        `ledger=${result.contextUsed.ledgerSize} ` +
+        `via=${ephemeral ? 'patch' : 'webhook'}`,
     );
   } catch (err) {
     console.error(
@@ -255,6 +268,67 @@ async function doReplyAsync(args: AsyncWorkerArgs): Promise<void> {
       // recordPatchOutcome inside patchOriginal. No further recovery.
       console.error(`interactions: PATCH-original after error also failed:`, patchErr);
     }
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Delivery paths — webhook (Pattern B) vs interaction PATCH (ephemeral)
+// ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Pattern B delivery via channel webhook. Slash reply renders with the
+ * character's avatar + username (per-message override on the shell
+ * webhook). The deferred "thinking" PATCH placeholder is DELETEd once
+ * the first chunk lands, leaving a clean Pattern B-shaped channel timeline.
+ *
+ * Throws on any webhook failure so the caller can fall back to PATCH.
+ */
+async function deliverViaWebhook(
+  interaction: DiscordInteraction,
+  config: Config,
+  character: CharacterConfig,
+  channelId: string,
+  chunks: string[],
+): Promise<void> {
+  const client = await getBotClient(config);
+  if (!client) {
+    throw new Error('webhook path: bot client unavailable');
+  }
+  const webhook = await getOrCreateChannelWebhook(client, channelId);
+
+  for (let i = 0; i < chunks.length; i++) {
+    if (i > 0) await sleep(FOLLOW_UP_THROTTLE_MS);
+    await sendChatReplyViaWebhook(webhook, character, chunks[i]!);
+    if (i === 0) {
+      // Delete the deferred "thinking..." placeholder once the first
+      // webhook chunk is up. Best-effort — if it fails (e.g., expired
+      // token, race), the placeholder lingers but delivery is unaffected.
+      void deleteOriginal(interaction).catch((err) => {
+        console.warn(
+          `interactions: deleteOriginal best-effort failed (placeholder may linger):`,
+          err,
+        );
+      });
+    }
+  }
+}
+
+/**
+ * Interaction PATCH delivery — used for ephemeral replies and as a
+ * fallback when webhook delivery fails. Bold-prefix attribution because
+ * the shell-bot identity is the one Discord renders.
+ */
+async function deliverViaInteraction(
+  interaction: DiscordInteraction,
+  character: CharacterConfig,
+  rawChunks: string[],
+  ephemeral: boolean,
+): Promise<void> {
+  const { chunks } = formatReply(character, rawChunks);
+  await patchOriginal(interaction, ephemeral, chunks[0] ?? '');
+  for (let i = 1; i < chunks.length; i++) {
+    await sleep(FOLLOW_UP_THROTTLE_MS);
+    await postFollowUp(interaction, ephemeral, chunks[i]!);
   }
 }
 
@@ -372,6 +446,23 @@ async function postFollowUp(
     const txt = await response.text().catch(() => '<unreadable body>');
     throw new Error(
       `interactions: follow-up POST failed status=${response.status} body=${txt.slice(0, 200)}`,
+    );
+  }
+}
+
+/**
+ * DELETE the deferred response. Used after Pattern B webhook delivery to
+ * clean up the "Application is thinking..." placeholder. 404 is acceptable
+ * (already deleted or token expired).
+ * Endpoint: DELETE /webhooks/{application_id}/{interaction_token}/messages/@original
+ */
+async function deleteOriginal(interaction: DiscordInteraction): Promise<void> {
+  const url = `${DISCORD_API_BASE}/webhooks/${interaction.application_id}/${interaction.token}/messages/@original`;
+  const response = await fetch(url, { method: 'DELETE' });
+  if (!response.ok && response.status !== 404) {
+    const txt = await response.text().catch(() => '<unreadable body>');
+    throw new Error(
+      `interactions: DELETE @original failed status=${response.status} body=${txt.slice(0, 200)}`,
     );
   }
 }

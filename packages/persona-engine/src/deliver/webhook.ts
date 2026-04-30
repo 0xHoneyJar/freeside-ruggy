@@ -122,6 +122,34 @@ export async function sendViaWebhook(
 }
 
 /**
+ * Send a plain-text chat reply through the channel webhook with per-character
+ * identity (V0.7-A.0). Mirror of `sendViaWebhook` but for the conversation
+ * surface — no embed, no digest payload shape, just the LLM's reply text.
+ *
+ * Pattern B identity preservation for slash command replies: the user sees
+ * the character's avatar + username as the speaker, not the shell-bot
+ * identity. Aligns chat replies with digest writes per Eileen's vault canon.
+ */
+export async function sendChatReplyViaWebhook(
+  webhook: Webhook,
+  character: CharacterConfig,
+  content: string,
+): Promise<{ posted: true; messageId: string }> {
+  const username =
+    character.webhookUsername ?? character.displayName ?? character.id;
+  const avatarURL = character.webhookAvatarUrl;
+
+  const message = await webhook.send({
+    username,
+    avatarURL,
+    content,
+    allowedMentions: { parse: [] },
+  });
+
+  return { posted: true, messageId: message.id };
+}
+
+/**
  * Invalidate the cache entry for a channel — call when send fails with
  * "unknown webhook" (HTTP 404) so the next call re-fetches/re-creates.
  */
