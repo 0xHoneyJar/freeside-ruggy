@@ -143,9 +143,10 @@ CHARACTERS=satoshi           # only satoshi
 CHARACTERS=ruggy,satoshi     # both (V0.6-D routing decides who speaks per fire)
 ```
 
-Default is `ruggy` (V0.5-E parity). The first character in the list is the
-"primary" — until V0.6-D's routing layer ships, all fires dispatch through
-the primary.
+Default is `ruggy`. The first character in the list is the "primary" — for
+the digest path, all fires dispatch through the primary (V0.6-A behavior).
+V0.6-D will add per-fire affinity routing. V0.7-A.0 slash commands route
+explicitly to the invoked character regardless of primary.
 
 ## Smoke-test a new character
 

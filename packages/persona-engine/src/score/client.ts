@@ -64,7 +64,7 @@ async function mcpInit(url: string, key: string): Promise<McpInitResult> {
       method: 'initialize',
       params: {
         protocolVersion: MCP_PROTOCOL_VERSION,
-        clientInfo: { name: 'freeside-ruggy', version: '0.4.0' },
+        clientInfo: { name: 'freeside-characters', version: '0.6.0' },
         capabilities: {},
       },
     }),
