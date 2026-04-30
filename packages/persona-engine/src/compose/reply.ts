@@ -149,7 +149,7 @@ async function invokeChat(config: Config, req: ChatInvokeArgs): Promise<string> 
   }
 }
 
-type ChatProvider = 'stub' | 'anthropic' | 'freeside';
+type ChatProvider = 'stub' | 'anthropic' | 'freeside' | 'bedrock';
 
 function resolveChatProvider(config: Config): ChatProvider {
   switch (config.LLM_PROVIDER) {
@@ -165,6 +165,11 @@ function resolveChatProvider(config: Config): ChatProvider {
         throw new Error('LLM_PROVIDER=freeside but FREESIDE_API_KEY is unset');
       }
       return 'freeside';
+    case 'bedrock':
+      if (!config.AWS_BEARER_TOKEN_BEDROCK && !config.BEDROCK_API_KEY) {
+        throw new Error('LLM_PROVIDER=bedrock but AWS_BEARER_TOKEN_BEDROCK or BEDROCK_API_KEY is unset');
+      }
+      return 'bedrock';
     case 'auto':
       if (config.ANTHROPIC_API_KEY) return 'anthropic';
       if (config.STUB_MODE) return 'stub';
