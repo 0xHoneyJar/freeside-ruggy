@@ -2,18 +2,29 @@
 
 > **Status (2026-04-30)**: this is a stub. The Bedrock LLM provider isn't
 > built yet. Eileen will share her Bedrock model spec; we'll wire the
-> provider + a one-command launcher in the next session.
+> provider + a one-command launcher in the next session. The architectural
+> split this doc commits to is laid out in
+> `~/bonfire/grimoires/bonfire/specs/eileen-local-bedrock-split.md`
+> (operator-side planning).
 
 ## What this is for
 
 Eileen has been given a private Amazon Bedrock API key and wants to run
-satoshi on her own machine using Bedrock for inference. The freeside-characters
-runtime currently supports `LLM_PROVIDER=stub | anthropic | freeside | auto`;
-adding `bedrock` is a small extension to `compose/reply.ts` and `compose/agent-gateway.ts`.
+satoshi on her own machine using Bedrock for inference, isolated from
+operator's prod-ruggy Railway deploy.
 
-Goal: she clones the repo, sets a few env vars, runs one command, and
-satoshi is alive in the project-purupuru staging guild — using HER bedrock
-key, on HER machine, isolated from operator's Railway deploy.
+**The clean split** (committed 2026-04-30):
+
+| Layer | Operator | Eileen |
+|---|---|---|
+| Codebase | this repo · `main` | same repo · pulls from `main` |
+| Discord application | `freeside-characters` (`Ruggy#1157`) | her own `satoshi-local` (she registers) |
+| Deploy target | Railway `prod-ruggy` | her local machine + tunnel |
+| LLM provider | Anthropic-direct (Opus 4.7) | AWS Bedrock (her key, model TBD) |
+
+She clones the repo, sets her bedrock + Discord env vars, runs one command,
+and satoshi is alive in HER Discord guild. Voice changes flow back to the
+shared codebase via PR.
 
 ## What's pending
 
@@ -87,20 +98,23 @@ infrastructure to plan the bedrock integration:
   identity; running Eileen's local satoshi against the same app would
   conflict on the global Interactions Endpoint URL.
 
-## Discord app architecture options
+## Discord app architecture — committed to option B
 
 The freeside-characters Discord application has ONE Interactions Endpoint URL.
-While Eileen's local bot is running, slash invocations from project-purupuru
-need to route to HER local, not to operator's Railway. Three paths:
+While Eileen's local bot is running, slash invocations need to route to HER
+local, not to operator's Railway. **End-state: Eileen creates her own
+`satoshi-local` Discord application** so the apps stay independent and
+neither blocks the other.
 
-| Option | Trade |
-|---|---|
-| **A. Hand over the freeside-characters URL during her sessions** | Simple · prod /satoshi blackout while Eileen is running locally |
-| **B. Eileen creates her own "satoshi-local" Discord app + bot** | Two `/satoshi` commands appear in the autocomplete (one per app) · she manages her own bot identity |
-| **C. Run side-by-side via different guilds** | Doesn't work — Discord routes per app, not per guild |
+| Option | Trade | Verdict |
+|---|---|---|
+| A. Operator hands over freeside-characters portal URL during Eileen's sessions | Simple · prod `/satoshi` blackout while she's running | Acceptable bridge for the first paired-setup session only |
+| **B. Eileen creates her own `satoshi-local` Discord app + bot** ✅ | Two `/satoshi` entries in autocomplete (different bot avatars) · clean independent ownership | **Committed end-state** |
+| C. Run side-by-side via different guilds | Doesn't work — Discord routes per app, not per guild | Rejected |
 
-Recommend **A for the first couple of sessions** (paired iteration with
-operator), then **B once she's running solo** so the prod path stays clean.
+Cosmetic cost of B: users in shared guilds see two `/satoshi` entries
+(operator's freeside-characters and Eileen's satoshi-local). They appear
+distinct via different bot avatars in autocomplete. Acceptable.
 
 ## Tomorrow's session
 
