@@ -103,15 +103,36 @@ export interface DiscordInteractionResponse {
 }
 
 /** Helper: extract the invoking user from member (guild) or user (DM). */
-export function interactionInvoker(interaction: DiscordInteraction): string {
-  return (
-    interaction.member?.nick ??
-    interaction.member?.user?.global_name ??
-    interaction.user?.global_name ??
-    interaction.member?.user?.username ??
-    interaction.user?.username ??
-    'someone'
-  );
+export function interactionInvoker(interaction: DiscordInteraction): {
+  id: string;
+  username: string;
+  bot?: boolean;
+} {
+  const member = interaction.member as
+    | {
+        nick?: string | null;
+        user?: DiscordInteractionUser & {
+          global_name?: string | null;
+        };
+      }
+    | undefined;
+
+  const user = (member?.user ?? interaction.user) as
+    | (DiscordInteractionUser & {
+        global_name?: string | null;
+        bot?: boolean;
+      })
+    | undefined;
+
+  return {
+    id: user?.id ?? 'unknown',
+    username:
+      member?.nick ??
+      user?.global_name ??
+      user?.username ??
+      'someone',
+    bot: user?.bot,
+  };
 }
 
 /** Helper: read a typed string option from interaction.data.options. */
