@@ -160,6 +160,29 @@ export async function dispatchSlashCommand(
   const { character, spec } = target;
   const handler = spec.handler;
 
+    const commandName = interaction.data?.name;
+  if (!commandName) {
+    return ephemeralReply('no command name in interaction.');
+  }
+if (commandName === 'satoshi-image') {
+  const imagePrompt =
+    readStringOption(interaction, 'prompt') ??
+    'Satoshi in Freeside, cinematic, no text, no logos';
+
+  const imageEphemeral =
+    readBooleanOption(interaction, 'ephemeral') ?? true;
+
+  return ephemeralReply(
+    `satoshi-image command reached. prompt: ${imagePrompt}`,
+  );
+}
+const character = characters.find((c) => c.id === commandName);
+if (!character) {
+  return ephemeralReply(
+    `unknown character: \`${commandName}\`. available: ${characters.map((c) => `/${c.id}`).join(', ') || '(none loaded)'}`,
+  );
+}
+
   // ─── Read options ──────────────────────────────────────────────────
   const prompt = readStringOption(interaction, 'prompt');
   if (!prompt || prompt.trim().length === 0) {
