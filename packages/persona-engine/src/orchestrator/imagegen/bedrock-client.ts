@@ -39,24 +39,71 @@ export async function invokeStability(
   config: Config,
   input: GenerateInput,
 ): Promise<GenerateOutput> {
-  if (!isImagegenConfigured(config)) {
-    throw new Error(
-      'imagegen: AWS_REGION and BEDROCK_STABILITY_MODEL_ID are required to invoke Stability',
-    );
-  }
-  if (!config.AWS_BEARER_TOKEN_BEDROCK && !config.BEDROCK_API_KEY) {
-    throw new Error(
-      'imagegen: AWS_BEARER_TOKEN_BEDROCK or BEDROCK_API_KEY required for Bedrock auth',
-    );
-  }
+const region = config.AWS_REGION;
+const modelId = config.BEDROCK_STABILITY_MODEL_ID;
+const apiKey = config.AWS_BEARER_TOKEN_BEDROCK || config.BEDROCK_API_KEY;
 
-  const seed = input.seed ?? deterministicSeed(input.prompt);
-  return {
-    url: buildPlaceholderUrl(input, seed),
-    model: config.BEDROCK_STABILITY_MODEL_ID!,
-    seed,
-    placeholder: true,
-  };
+if (!region || !modelId) {
+  throw new Error(
+    'imagegen: AWS_REGION and BEDROCK_STABILITY_MODEL_ID are required to invoke Stability',
+  );
+}
+
+if (!apiKey) {
+  throw new Error(
+    'imagegen: AWS_BEARER_TOKEN_BEDROCK or BEDROCK_API_KEY required for Bedrock auth',
+  );
+}
+
+const seed = input.seed ?? deterministicSeed(input.prompt);
+
+const response = await fetch(
+  `https://bedrock-runtime.${region}.amazonaws.com/model/${encodeURIComponent(modelId)}/invoke`,
+  {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      prompt: input.prompt,
+      mode: 'text-to-image',
+      aspect_ratio: input.aspect_ratio ?? '1:1',
+      output_format: 'png',
+      seed,
+    }),
+  },
+);
+
+if (!response.ok) {
+  throw new Error(`imagegen: Bedrock Stability failed ${response.status}: ${await response.text()}`);
+}
+
+const data = (await response.json()) as {
+  images?: string[];
+  seeds?: number[];
+  finish_reasons?: Array<string | null>;
+};
+
+const finishReason = data.finish_reasons?.[0];
+if (finishReason) {
+  throw new Error(`imagegen: Bedrock Stability finish_reason=${finishReason}`);
+}
+
+const imageBase64 = data.images?.[0];
+if (!imageBase64) {
+  throw new Error(`imagegen: Bedrock Stability returned no image: ${JSON.stringify(data)}`);
+}
+
+return {
+  url: `attachment://satoshi-image-${seed}.png`,
+  model: modelId,
+  seed: data.seeds?.[0] ?? seed,
+  placeholder: false,
+  imageBase64,
+  mimeType: 'image/png',
+  filename: `image-${seed}.png`,
+};
 }
 
 function buildPlaceholderUrl(input: GenerateInput, seed: number): string {

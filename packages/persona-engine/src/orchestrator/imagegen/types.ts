@@ -40,6 +40,10 @@ export interface GenerateOutput {
    * dispatch handler decorate the reply with a "scaffold mode" notice.
    */
   placeholder: boolean;
+
+  imageBase64?: string;
+  mimeType?: string;
+  filename?: string;
 }
 
 export interface SuggestStyleInput {
