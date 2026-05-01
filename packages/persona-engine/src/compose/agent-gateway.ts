@@ -65,8 +65,9 @@ function resolveProvider(config: Config): ResolvedProvider {
       return 'freeside';
     case 'bedrock':
       if (!config.AWS_BEARER_TOKEN_BEDROCK && !config.BEDROCK_API_KEY) {
-        throw new Error('LLM_PROVIDER=bedrock but AWS_BEARER_TOKEN_BEDROCK or BEDROCK_API_KEY is unset'+'anthropic or freeside (Claude Agent SDK + MCP tool-call rounds). ' +
-          'See docs/EILEEN-LOCAL-BEDROCK-SPLIT.md.);
+throw new Error(
+  'LLM_PROVIDER=bedrock is configured, but this provider is not enabled in this runtime path. See docs/EILEEN-LOCAL-BEDROCK-SPLIT.md.',
+);
       }
       return 'bedrock';
     case 'auto': {
