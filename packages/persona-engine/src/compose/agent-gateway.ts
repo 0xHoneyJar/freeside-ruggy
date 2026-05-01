@@ -45,7 +45,7 @@ export interface InvokeResponse {
   meta?: Record<string, unknown>;
 }
 
-export type ResolvedProvider = 'stub' | 'anthropic' | 'freeside';
+export type ResolvedProvider = 'stub' | 'anthropic' | 'freeside' | 'bedrock';
 
 let loggedAutoOnce = false;
 
@@ -64,15 +64,11 @@ function resolveProvider(config: Config): ResolvedProvider {
       }
       return 'freeside';
     case 'bedrock':
-      // Bedrock is chat-mode-only (Eileen's local-satoshi setup). The
-      // digest path uses the Claude Agent SDK with MCPs which doesn't
-      // support Bedrock natively for tool-call rounds. If a deploy needs
-      // bedrock for digest fires, fail loud rather than silently fall back.
-      throw new Error(
-        'LLM_PROVIDER=bedrock is chat-mode-only · digest path requires ' +
-          'anthropic or freeside (Claude Agent SDK + MCP tool-call rounds). ' +
-          'See docs/EILEEN-LOCAL-BEDROCK-SPLIT.md.',
-      );
+      if (!config.AWS_BEARER_TOKEN_BEDROCK && !config.BEDROCK_API_KEY) {
+        throw new Error('LLM_PROVIDER=bedrock but AWS_BEARER_TOKEN_BEDROCK or BEDROCK_API_KEY is unset'+'anthropic or freeside (Claude Agent SDK + MCP tool-call rounds). ' +
+          'See docs/EILEEN-LOCAL-BEDROCK-SPLIT.md.);
+      }
+      return 'bedrock';
     case 'auto': {
       // V0.3 back-compat: anthropic > stub > freeside
       const resolved: ResolvedProvider = config.ANTHROPIC_API_KEY
@@ -104,6 +100,8 @@ export async function invoke(config: Config, req: InvokeRequest): Promise<Invoke
       return generateStubPost(req);
     case 'freeside':
       return invokeFreeside(config, req);
+    case 'bedrock':
+      return invokeBedrockPlaceholder(config, req);
   }
 }
 
@@ -145,6 +143,87 @@ async function invokeFreeside(config: Config, req: InvokeRequest): Promise<Invok
 
   const data = (await response.json()) as { text: string; usage?: Record<string, unknown> };
   return { text: data.text, meta: data.usage };
+}
+
+async function invokeBedrockPlaceholder(config: Config, req: InvokeRequest): Promise<InvokeResponse> {
+  const apiKey = config.AWS_BEARER_TOKEN_BEDROCK || config.BEDROCK_API_KEY;
+  if (!apiKey) {
+    throw new Error('Bedrock provider selected but AWS_BEARER_TOKEN_BEDROCK or BEDROCK_API_KEY is unset');
+  }
+
+  const region = config.BEDROCK_TEXT_REGION || config.AWS_REGION;
+  const modelId = config.BEDROCK_TEXT_MODEL_ID;
+  if (!modelId) {
+    throw new Error('Bedrock provider selected but BEDROCK_TEXT_MODEL_ID is unset');
+  }
+
+  const encodedModelId = encodeURIComponent(modelId);
+  const url = `https://bedrock-runtime.${region}.amazonaws.com/model/${encodedModelId}/converse`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      system: [
+        {
+          text: req.systemPrompt,
+        },
+      ],
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              text: req.userMessage,
+            },
+          ],
+        },
+      ],
+      inferenceConfig: {
+        maxTokens: 1024,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`bedrock converse error: ${response.status} ${await response.text()}`);
+  }
+
+  const data = (await response.json()) as {
+    output?: {
+      message?: {
+        content?: Array<{ text?: string }>;
+      };
+    };
+    usage?: {
+      inputTokens?: number;
+      outputTokens?: number;
+      totalTokens?: number;
+    };
+  };
+
+  const text = data.output?.message?.content
+    ?.map((part) => part.text)
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+
+  if (!text) {
+    throw new Error(`bedrock converse returned no text: ${JSON.stringify(data)}`);
+  }
+
+  return {
+    text,
+    meta: {
+      provider: 'bedrock',
+      modelId,
+      region,
+      usage: data.usage,
+    },
+  };
 }
 
 // ──────────────────────────────────────────────────────────────────────
