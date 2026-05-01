@@ -143,6 +143,7 @@ Key design rules baked into V0.7-A.0:
 | `orchestrator/rosenzu/` | In-bot SDK MCP — Lynch primitives, KANSEI vectors | `@anthropic-ai/claude-agent-sdk` |
 | `orchestrator/emojis/` | In-bot SDK MCP — 43-emoji THJ catalog with mood tags + `.run/emoji-recent.jsonl` cache | `@anthropic-ai/claude-agent-sdk` |
 | `orchestrator/freeside_auth/` | In-bot SDK MCP — wallet → handle/discord/mibera_id resolution against Railway Postgres | `@anthropic-ai/claude-agent-sdk`, `pg` |
+| `orchestrator/imagegen/` | In-bot SDK MCP — Bedrock Stability text-to-image (V0.7-A.1 substrate scaffold · `generate` body stubbed pending Eileen's invoke PR · `suggest_style` is static archetype lookup) | `@anthropic-ai/claude-agent-sdk` |
 | `orchestrator/cabal/gygax.ts` | Cabal subagent (retired from per-fire compose 2026-04-30 · preserved for future `/cabal` command) | — |
 | `deliver/webhook.ts` | Pattern B delivery · `getOrCreateChannelWebhook` + `sendViaWebhook` (digest) + `sendChatReplyViaWebhook` (V0.7-A.0 chat) | `discord.js` |
 | `deliver/embed.ts` | Per-post-type embed shape (digest/weaver/callout = embed; micro/lore/question = plain) | — |
@@ -157,16 +158,16 @@ Key design rules baked into V0.7-A.0:
 | `character-loader.ts` | Reads `apps/character-<id>/character.json` → `CharacterConfig` · honors `CHARACTERS` env |
 | `cli/digest-once.ts` | One-shot CLI for testing — fires single digest sweep then exits |
 | `discord-interactions/server.ts` | V0.7-A.0 `Bun.serve` HTTP endpoint · Ed25519 verify · `/health` + `/webhooks/discord` |
-| `discord-interactions/dispatch.ts` | V0.7-A.0 slash dispatch · anti-spam guard · 14m30s timeout · circuit breaker · webhook-or-PATCH delivery routing |
+| `discord-interactions/dispatch.ts` | V0.7-A.0 slash dispatch · anti-spam guard · 14m30s timeout · circuit breaker · webhook-or-PATCH delivery routing · V0.7-A.1 handler-aware routing (`chat` / `imagegen`) |
 | `discord-interactions/types.ts` | Discord Interactions API types (`InteractionType`, `InteractionResponseType`, `MessageFlags`) |
-| `scripts/publish-commands.ts` | One-shot · registers `/ruggy` + `/satoshi` slash commands via Discord API |
-| `scripts/smoke-interactions.ts` | Smoke test · ledger ring buffer + server endpoints |
+| `scripts/publish-commands.ts` | One-shot · flattens every character's declared (or defaulted) slash commands and registers via Discord API |
+| `scripts/smoke-interactions.ts` | Smoke test · ledger ring buffer + server endpoints + imagegen + slash routing + MCP scoping |
 
 ### `apps/character-<id>/` — characters
 
 | File | What |
 |---|---|
-| `character.json` | `CharacterConfig` shape · id · displayName · personaFile · webhookAvatarUrl · anchoredArchetypes |
+| `character.json` | `CharacterConfig` shape · id · displayName · personaFile · webhookAvatarUrl · anchoredArchetypes · `slash_commands` (V0.7-A.1+) · `mcps` (V0.7-A.1+) |
 | `persona.md` | Source of truth for voice · system prompt template · per-post-type fragments · gumi-locked content + operator-iterated affirmative voice anchor |
 | `codex-anchors.md` | Per-character mibera-codex SOIL · which archetypes resonate · which lineage |
 | `voice-anchors.md` | Cross-post-type voice texture · operator-curated past utterances |
@@ -207,6 +208,78 @@ Swap-out matrix:
 
 Independent. Pure-offline = both on. Voice-validation path:
 `STUB_MODE=true LLM_PROVIDER=anthropic ANTHROPIC_API_KEY=…`
+
+## Per-character divergence (V0.7-A.1)
+
+Eileen 2026-04-30: "commands are diff otherwise they'd be reporting the same
+shit." V0.7-A.1 introduced two orthogonal divergence axes that each character
+declares in `character.json`:
+
+```mermaid
+flowchart TB
+    subgraph chars["apps/character-*"]
+      ruggy_cfg["🐻 ruggy/character.json<br/>slash: /ruggy chat (default)<br/>mcps: [score, codex, emojis, rosenzu, freeside_auth]"]
+      satoshi_cfg["🌀 satoshi/character.json<br/>slash: /satoshi chat + /satoshi-image imagegen<br/>mcps: [codex, imagegen]"]
+    end
+
+    subgraph publish["publish path"]
+      flatten["flatten across characters<br/>reject duplicate names loud"]
+      discord_api["Discord API<br/>register all commands"]
+    end
+
+    subgraph dispatch_path["dispatch path (slash invocation)"]
+      resolve["resolveSlashCommandTarget<br/>name → character + handler"]
+      route["switch (handler)"]
+      chat_path["chat handler<br/>composeReply (no MCPs)"]
+      imagegen_path["imagegen handler<br/>invokeStability (direct)"]
+    end
+
+    subgraph digest_path["digest path (cron-driven)"]
+      orch["runOrchestratorQuery"]
+      filter["buildAllowedTools<br/>(serverNames ∩ character.mcps)"]
+      sdk["Claude Agent SDK · query()<br/>permissionMode: dontAsk"]
+    end
+
+    ruggy_cfg --> flatten
+    satoshi_cfg --> flatten
+    flatten --> discord_api
+
+    ruggy_cfg --> resolve
+    satoshi_cfg --> resolve
+    resolve --> route
+    route --> chat_path
+    route --> imagegen_path
+
+    ruggy_cfg --> orch
+    satoshi_cfg --> orch
+    orch --> filter
+    filter --> sdk
+
+    classDef cfg fill:#fff3cd,stroke:#856404
+    classDef pub fill:#cce5ff,stroke:#004085
+    classDef disp fill:#e5f5e0,stroke:#41ab5d
+    classDef digest fill:#f0e5fc,stroke:#7e3ff2
+    class ruggy_cfg,satoshi_cfg cfg
+    class flatten,discord_api pub
+    class resolve,route,chat_path,imagegen_path disp
+    class orch,filter,sdk digest
+```
+
+**Slash commands** are flattened across all characters at publish time and
+routed by command-name lookup at dispatch time. Default fallback gives every
+character a `/<id>` chat command without explicit declaration; characters
+extend by declaring `slash_commands` with additional names + handlers.
+
+**MCP scoping** affects ONLY the digest path. The substrate still registers
+all MCPs (env-gated) bot-wide; per-character `mcps` filters the
+`allowedTools` whitelist passed to the SDK loop. `permissionMode: 'dontAsk'`
+denies anything outside that whitelist — character intent narrows what's
+reachable, but doesn't expand it (names not registered are dropped).
+
+Chat-mode replies (`composeReply`) and the imagegen handler both bypass MCPs
+entirely by construction, so per-character scoping there is unnecessary —
+the chat persona prompt is the only voice surface, and imagegen calls
+`invokeStability` directly without LLM intermediation.
 
 ## Why discord.js (Gateway) + Bun.serve (HTTP)
 
