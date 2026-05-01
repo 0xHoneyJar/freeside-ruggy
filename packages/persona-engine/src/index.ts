@@ -26,13 +26,9 @@ export type {
   SlashCommandOption,
   DiscordApplicationCommandOptionType,
 } from './types.ts';
-export type { CharacterConfig, ZoneId, PostType, EmojiAffinityKind } from './types.ts';
+
 export type { Config } from './config.ts';
 export type { FireRequest, SchedulerHandles, ScheduleArgs } from './cron/scheduler.ts';
-export type { PostComposeResult } from './compose/composer.ts';
-export type { DeliveryResult } from './deliver/post.ts';
-export type { DigestPayload, DiscordEmbed } from './deliver/embed.ts';
-export type { ZoneDigest, RawStats } from './score/types.ts';
 
 // Compose API — substrate's top-level entry for "make a post for character X in zone Y"
 export { composeZonePost as composeForCharacter, ALL_ZONES } from './compose/composer.ts';

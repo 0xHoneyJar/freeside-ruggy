@@ -36,21 +36,49 @@ const ConfigSchema = z.object({
   FREESIDE_API_KEY: z.string().optional(),
   FREESIDE_AGENT_MODEL: z.enum(['cheap', 'fast-code', 'reviewer', 'reasoning', 'architect']).default('reasoning'),
 
-  // ─── AWS Bedrock (Eileen's local-satoshi path · LLM_PROVIDER=bedrock) ─
-  /** AWS Bedrock API key (newer Bedrock auth method · long-lived bearer). */
+  // ─── amazon bedrock-native ────────────────────────────────────────────
+  AWS_REGION: z.string().default('eu-central-1'),
   AWS_BEARER_TOKEN_BEDROCK: z.string().optional(),
-  /** Alternate Bedrock auth · either AWS_BEARER_TOKEN_BEDROCK or this. */
   BEDROCK_API_KEY: z.string().optional(),
-  /** Bedrock model id (e.g. anthropic.claude-sonnet-4-5-20250929-v1:0).
-   *  Per-deploy override; Eileen sets this to her region's available model. */
-  BEDROCK_MODEL_ID: z.string().optional(),
-  /** Bedrock Stability model id for imagegen (e.g.
-   *  stability.stable-image-ultra-v1:0 or stability.stable-diffusion-xl-v1).
-   *  Separate from BEDROCK_MODEL_ID (chat-mode Claude). When set together
-   *  with AWS_REGION, the orchestrator registers the imagegen MCP. */
+
+  BEDROCK_TEXT_REGION: z.string().default('us-west-2'),
+  BEDROCK_TEXT_MODEL_ID: z.string().optional(),
   BEDROCK_STABILITY_MODEL_ID: z.string().optional(),
-  /** AWS region for Bedrock runtime. Eileen sets to her access region. */
-  AWS_REGION: z.string().optional(),
+
+  BEDROCK_IMAGE_REGION: z.string().default('us-east-1'),
+  BEDROCK_IMAGE_TEXT_TO_IMAGE_REGION: z.string().default('us-west-2'),
+
+  BEDROCK_IMAGE_DEFAULT_ACTION: z.enum([
+    'text-to-image',
+    'style-transfer',
+    'style-guide',
+    'search-and-replace',
+    'search-and-recolor',
+    'remove-background',
+    'outpaint',
+    'inpaint',
+    'fast-upscale',
+    'erase-object',
+    'creative-upscale',
+    'control-structure',
+    'control-sketch',
+    'conservative-upscale',
+  ]).default('text-to-image'),
+
+  BEDROCK_IMAGE_TEXT_TO_IMAGE_MODEL_ID: z.string().optional(),
+  BEDROCK_IMAGE_STYLE_TRANSFER_MODEL_ID: z.string().optional(),
+  BEDROCK_IMAGE_STYLE_GUIDE_MODEL_ID: z.string().optional(),
+  BEDROCK_IMAGE_SEARCH_AND_REPLACE_MODEL_ID: z.string().optional(),
+  BEDROCK_IMAGE_SEARCH_AND_RECOLOR_MODEL_ID: z.string().optional(),
+  BEDROCK_IMAGE_REMOVE_BACKGROUND_MODEL_ID: z.string().optional(),
+  BEDROCK_IMAGE_OUTPAINT_MODEL_ID: z.string().optional(),
+  BEDROCK_IMAGE_INPAINT_MODEL_ID: z.string().optional(),
+  BEDROCK_IMAGE_FAST_UPSCALE_MODEL_ID: z.string().optional(),
+  BEDROCK_IMAGE_ERASE_OBJECT_MODEL_ID: z.string().optional(),
+  BEDROCK_IMAGE_CREATIVE_UPSCALE_MODEL_ID: z.string().optional(),
+  BEDROCK_IMAGE_CONTROL_STRUCTURE_MODEL_ID: z.string().optional(),
+  BEDROCK_IMAGE_CONTROL_SKETCH_MODEL_ID: z.string().optional(),
+  BEDROCK_IMAGE_CONSERVATIVE_UPSCALE_MODEL_ID: z.string().optional(),
 
   // ─── anthropic-direct (V0 LLM testing) ────────────────────────────────
   ANTHROPIC_API_KEY: z.string().optional(),

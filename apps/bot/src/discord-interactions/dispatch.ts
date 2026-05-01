@@ -137,51 +137,35 @@ export async function dispatchSlashCommand(
     );
   }
 
-  // ─── Resolve target command + handler ──────────────────────────────
-  // V0.7-A.1: characters may declare divergent commands (e.g. /satoshi-
-  // image alongside /satoshi). Lookup is by command NAME, not character
-  // id, since the two diverged at this phase.
-  const commandName = interaction.data?.name;
-  if (!commandName) {
-    return ephemeralReply('no command name in interaction.');
-  }
-  const target = resolveSlashCommandTarget(commandName, characters);
-  if (!target) {
-    // Single source of truth for available commands — resolveSlashCommands
-    // handles the declared-vs-default fallback identically here and at
-    // publish time, so this listing can never drift from what's registered.
-    const available = characters
-      .flatMap((c) => resolveSlashCommands(c).map((s) => `/${s.name}`))
-      .join(', ');
-    return ephemeralReply(
-      `unknown command: \`${commandName}\`. available: ${available || '(none loaded)'}`,
-    );
-  }
-  const { character, spec } = target;
-  const handler = spec.handler;
+// —— Resolve target command + handler ————————————————————————
+// V0.7-A.1: characters may declare divergent commands (e.g. /satoshi-image alongside /satoshi).
+const commandName = interaction.data?.name;
+if (!commandName) {
+  return ephemeralReply('no command name in interaction.');
+}
 
-    const commandName = interaction.data?.name;
-  if (!commandName) {
-    return ephemeralReply('no command name in interaction.');
-  }
 if (commandName === 'satoshi-image') {
   const imagePrompt =
     readStringOption(interaction, 'prompt') ??
     'Satoshi in Freeside, cinematic, no text, no logos';
 
-  const imageEphemeral =
-    readBooleanOption(interaction, 'ephemeral') ?? true;
-
   return ephemeralReply(
     `satoshi-image command reached. prompt: ${imagePrompt}`,
   );
 }
-const character = characters.find((c) => c.id === commandName);
-if (!character) {
+
+const target = resolveSlashCommandTarget(commandName, characters);
+if (!target) {
+  const available = characters
+    .flatMap((c) => resolveSlashCommands(c).map((s) => `/${s.name}`))
+    .join(', ');
   return ephemeralReply(
-    `unknown character: \`${commandName}\`. available: ${characters.map((c) => `/${c.id}`).join(', ') || '(none loaded)'}`,
+    `unknown command: \`${commandName}\`. available: ${available || '(none loaded)'}`,
   );
 }
+
+const { character, spec } = target;
+const handler = spec.handler;
 
   // ─── Read options ──────────────────────────────────────────────────
   const prompt = readStringOption(interaction, 'prompt');
