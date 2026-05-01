@@ -26,6 +26,7 @@ export type {
   SlashCommandOption,
   DiscordApplicationCommandOptionType,
 } from './types.ts';
+export type { CharacterConfig, ZoneId, PostType, EmojiAffinityKind } from './types.ts';
 export type { Config } from './config.ts';
 export type { FireRequest, SchedulerHandles, ScheduleArgs } from './cron/scheduler.ts';
 export type { PostComposeResult } from './compose/composer.ts';
@@ -61,6 +62,9 @@ export { exemplarStats } from './persona/exemplar-loader.ts';
 // Reply API (V0.7-A.0 — chat-mode pipeline for slash command replies)
 export { composeReply, splitForDiscord } from './compose/reply.ts';
 export type { ReplyComposeArgs, ReplyComposeResult } from './compose/reply.ts';
+
+// Bedrock image generation
+export * from './compose/bedrock-image.ts';
 
 // Conversation ledger (V0.7-A.0 — in-process per-channel ring buffer)
 export {
