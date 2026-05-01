@@ -30,6 +30,8 @@ import {
   invokeStability,
   isImagegenConfigured,
 } from '@freeside-characters/persona-engine/orchestrator/imagegen';
+import { buildAllowedTools } from '@freeside-characters/persona-engine/orchestrator';
+import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 
 const PORT = Number(process.env.SMOKE_PORT ?? '34501');
 const DUMMY_PUBLIC_KEY = '0'.repeat(64); // 32-byte hex, valid format · won't verify real sigs
@@ -177,6 +179,47 @@ async function main(): Promise<void> {
     fail('resolveSlashCommandTarget should return null for unknown commands');
   } else {
     ok('slash · unknown command resolves to null');
+  }
+
+  // ── per-character MCP scoping smoke (V0.7-A.1 #3) ─────────────────
+  // Fake an mcpServers map matching the substrate's registration shape.
+  // Stub config values pass the type check; buildAllowedTools never reads
+  // server contents, only the keys map.
+  const fakeStubServer = { type: 'sdk' } as unknown as McpServerConfig;
+  const fakeMcpServers: Record<string, McpServerConfig> = {
+    score: fakeStubServer,
+    codex: fakeStubServer,
+    emojis: fakeStubServer,
+    rosenzu: fakeStubServer,
+    freeside_auth: fakeStubServer,
+    imagegen: fakeStubServer,
+  };
+
+  // V0.6 parity — undefined mcps means all registered servers allowed.
+  const allTools = buildAllowedTools(fakeMcpServers);
+  if (allTools.length !== 6) fail(`mcp scoping · expected 6 wildcard tools when mcps undefined, got ${allTools.length}`);
+  else ok('mcp scoping · undefined character.mcps allows ALL registered servers');
+
+  // ruggy scope — score/codex/emojis/rosenzu/freeside_auth, no imagegen.
+  const ruggyTools = buildAllowedTools(fakeMcpServers, ['score', 'codex', 'emojis', 'rosenzu', 'freeside_auth']);
+  if (ruggyTools.length !== 5) fail(`mcp scoping · ruggy expected 5 tools, got ${ruggyTools.length}`);
+  else if (ruggyTools.includes('mcp__imagegen__*')) fail('mcp scoping · ruggy should NOT have imagegen access');
+  else if (!ruggyTools.includes('mcp__score__*')) fail('mcp scoping · ruggy should have score access');
+  else ok('mcp scoping · ruggy allowed=[score,codex,emojis,rosenzu,freeside_auth] · no imagegen');
+
+  // satoshi scope — codex + imagegen only.
+  const satoshiTools = buildAllowedTools(fakeMcpServers, ['codex', 'imagegen']);
+  if (satoshiTools.length !== 2) fail(`mcp scoping · satoshi expected 2 tools, got ${satoshiTools.length}`);
+  else if (satoshiTools.includes('mcp__score__*')) fail('mcp scoping · satoshi should NOT have score access');
+  else if (!satoshiTools.includes('mcp__imagegen__*')) fail('mcp scoping · satoshi should have imagegen access');
+  else ok('mcp scoping · satoshi allowed=[codex,imagegen] · no score');
+
+  // Names not registered are silently dropped — character intent ∩ runtime registration.
+  const partialTools = buildAllowedTools(fakeMcpServers, ['codex', 'phantom_mcp']);
+  if (partialTools.length !== 1 || partialTools[0] !== 'mcp__codex__*') {
+    fail(`mcp scoping · phantom server should be dropped, got ${JSON.stringify(partialTools)}`);
+  } else {
+    ok('mcp scoping · names not registered are silently dropped (intent ∩ registered)');
   }
 
   // ── HTTP server smoke ─────────────────────────────────────────────

@@ -130,10 +130,26 @@ function buildMcpServers(config: Config): Record<string, McpServerConfig> {
  * compose path per gumi correction §0.5 #1. If a future subagent needs
  * Task dispatch (e.g. the /cabal post-design reception tester running
  * separately from compose), re-add then.
+ *
+ * V0.7-A.1 (per-character MCP scoping): when `characterMcps` is provided,
+ * the allowed list filters to servers whose names appear in that array.
+ * Names that aren't currently registered are silently dropped — the
+ * character expresses INTENT; what's actually available is the
+ * intersection with what the substrate has wired. When `characterMcps`
+ * is undefined, all registered servers are allowed (V0.6 parity).
+ *
+ * Exported (rather than file-private) so the substrate's smoke tests can
+ * exercise the scoping logic without booting the Claude Agent SDK loop.
  */
-function buildAllowedTools(mcpServers: Record<string, McpServerConfig>): string[] {
-  const mcpTools = Object.keys(mcpServers).map((name) => `mcp__${name}__*`);
-  return mcpTools;
+export function buildAllowedTools(
+  mcpServers: Record<string, McpServerConfig>,
+  characterMcps?: string[],
+): string[] {
+  const allNames = Object.keys(mcpServers);
+  const enabled = characterMcps
+    ? allNames.filter((name) => characterMcps.includes(name))
+    : allNames;
+  return enabled.map((name) => `mcp__${name}__*`);
 }
 
 /**
@@ -168,7 +184,7 @@ export async function runOrchestratorQuery(
   }
 
   const mcpServers = buildMcpServers(config);
-  const allowedTools = buildAllowedTools(mcpServers);
+  const allowedTools = buildAllowedTools(mcpServers, req.character.mcps);
 
   const options: Options = {
     systemPrompt: req.systemPrompt,

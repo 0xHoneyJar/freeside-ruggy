@@ -90,6 +90,26 @@ export interface CharacterConfig {
    * (apps/bot/src/discord-interactions/dispatch.ts).
    */
   slash_commands?: SlashCommandSpec[];
+
+  /**
+   * V0.7-A.1: per-character MCP scope. Names of MCP servers the character
+   * is allowed to call from its digest path. When omitted, the character
+   * has access to ALL registered MCPs (V0.6 parity). Names not currently
+   * registered (e.g. codex when CODEX_MCP_URL unset) are silently dropped
+   * — the field expresses INTENT; what's actually available is the
+   * intersection with what the substrate has wired.
+   *
+   * Examples:
+   *   ruggy   = ['score', 'codex', 'emojis', 'rosenzu', 'freeside_auth']
+   *             // reporter · data-grounded · no imagegen
+   *   satoshi = ['codex', 'imagegen']
+   *             // mibera-agent · cross-realms · no score lookups
+   *
+   * Affects ONLY the digest path (runOrchestratorQuery). Chat-mode
+   * replies (composeReply) bypass MCPs entirely by design and are
+   * unaffected by this field.
+   */
+  mcps?: string[];
 }
 
 /**

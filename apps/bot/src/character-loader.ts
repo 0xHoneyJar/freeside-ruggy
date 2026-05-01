@@ -40,6 +40,9 @@ interface CharacterJson {
   /** V0.7-A.1: per-character slash command set. Omit for default
    *  `/<id> prompt:<text> ephemeral:<bool>` (V0.7-A.0 parity). */
   slash_commands?: SlashCommandSpec[];
+  /** V0.7-A.1: per-character MCP scope (digest path only). Omit for
+   *  bot-wide MCP access (V0.6 parity). */
+  mcps?: string[];
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -77,6 +80,7 @@ export function loadCharacter(id: string): CharacterConfig {
     webhookUsername: json.webhookUsername,
     anchoredArchetypes: json.anchoredArchetypes as CharacterConfig['anchoredArchetypes'],
     slash_commands: json.slash_commands,
+    mcps: json.mcps,
   };
 }
 

@@ -8,6 +8,7 @@
     ".": "./src/index.ts",
     "./types": "./src/types.ts",
     "./config": "./src/config.ts",
+    "./orchestrator": "./src/orchestrator/index.ts",
     "./orchestrator/imagegen": "./src/orchestrator/imagegen/index.ts"
   },
   "scripts": {
