@@ -468,8 +468,10 @@ async function doReplyImagegen(args: AsyncWorkerArgs): Promise<void> {
           );
         }
 
-        const caption = `${character.displayName ?? character.id} in Freeside`;
-
+        const caption =
+          `${character.displayName ?? character.id} in Freeside\n\n` +
+          `${buildQuotePrefix(invoker.username, prompt).trimEnd()}`;
+        
         await sendImageReplyViaWebhook(webhook, character, {
           content: caption,
           imageBytes,
