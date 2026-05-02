@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.1] — 2026-05-01 — scope digest tool-architecture to digest workflow
+
+<details open>
+<summary>still-faking diagnosis</summary>
+
+### Fixed
+
+- **persona**: scope digest tool-architecture to digest workflow (#9)
+
+_Source: PR #9_
+
+
 ## [0.9.0] — 2026-05-01 — environment substrate (Phases B-E · cycle-001)
 
 
