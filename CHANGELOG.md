@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.11.1] — 2026-05-01 — Bedrock-aware SDK auth · close the chat-tool gap
+
+<details open>
+<summary>the reorientation: Bedrock IS the provider</summary>
+
+### Fixed
+
+- **orchestrator**: Bedrock-aware SDK auth · close the chat-tool gap (#11)
+
+_Source: PR #11_
+
+
 ## [0.9.0] — 2026-05-01 — environment substrate (Phases B-E · cycle-001)
 
 
