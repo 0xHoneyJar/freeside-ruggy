@@ -1,0 +1,72 @@
+{
+  "version": "1.0.0",
+  "next_sprint_number": 6,
+  "active_cycle": "cycle-001",
+  "cycles": [
+    {
+      "id": "cycle-001",
+      "label": "V0.7-A.1 environment substrate",
+      "status": "active",
+      "created_at": "2026-05-02T01:18:32Z",
+      "prd": "grimoires/loa/specs/build-environment-substrate-v07a1.md",
+      "sdd": "grimoires/loa/specs/build-environment-substrate-v07a1.md",
+      "spec_note": "External-work-plan kickoff brief serves as combined PRD+SDD per spec frontmatter `external_work_plan: true`. Phase A (Loa mount) already shipped via commit daed064 prior to ledger init; cycle-001 covers Phases B-E (substrate proper) plus optional Phase F (density experiment).",
+      "sprints": [
+        {
+          "local_id": "sprint-1",
+          "global_number": 1,
+          "title": "Channel-Zone Reverse Map (Phase B)",
+          "scope": "SMALL",
+          "task_count": 3,
+          "status": "planned",
+          "epic_bead": "bd-3ru",
+          "spec_phase": "B"
+        },
+        {
+          "local_id": "sprint-2",
+          "global_number": 2,
+          "title": "Environment Context Builder + Rosenzu read_room (Phase C)",
+          "scope": "LARGE",
+          "task_count": 8,
+          "status": "planned",
+          "epic_bead": "bd-266",
+          "spec_phase": "C"
+        },
+        {
+          "local_id": "sprint-3",
+          "global_number": 3,
+          "title": "Chat-Mode MCP Wiring (Phase D)",
+          "scope": "MEDIUM",
+          "task_count": 6,
+          "status": "planned",
+          "epic_bead": "bd-9j5",
+          "spec_phase": "D",
+          "risk_tier": "MEDIUM"
+        },
+        {
+          "local_id": "sprint-4",
+          "global_number": 4,
+          "title": "Persona Iteration + E2E Validation (Phase E)",
+          "scope": "MEDIUM",
+          "task_count": 5,
+          "status": "planned",
+          "epic_bead": "bd-34e",
+          "spec_phase": "E",
+          "is_final": true
+        },
+        {
+          "local_id": "sprint-5",
+          "global_number": 5,
+          "title": "Webhook Density Experiment (Phase F)",
+          "scope": "SMALL",
+          "task_count": 4,
+          "status": "optional",
+          "epic_bead": "bd-3i7",
+          "spec_phase": "F",
+          "optional": true,
+          "gates": ["operator_approval", "dev_guild_test_channel_provisioned"]
+        }
+      ]
+    }
+  ]
+}
