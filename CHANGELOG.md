@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.0] — 2026-05-01 — compose unification + chat-tool streaming + WITNESS first-run
+
+<details open>
+<summary>combined cycle: streaming + compose unification + WITNESS first-run</summary>
+
+### Added
+
+- **V0.7-A.2**: compose unification + chat-tool streaming + WITNESS first-run (#8)
+
+_Source: PR #8_
+
+
 ## [0.9.0] — 2026-05-01 — environment substrate (Phases B-E · cycle-001)
 
 
