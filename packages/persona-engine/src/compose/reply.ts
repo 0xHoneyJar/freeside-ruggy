@@ -52,6 +52,10 @@ import {
   type GrailRefValidation,
 } from '../deliver/grail-ref-guard.ts';
 import {
+  stripAttachedImageUrls,
+  extractAttachedUrls,
+} from '../deliver/strip-image-urls.ts';
+import {
   appendToLedger,
   getLedgerSnapshot,
   type LedgerEntry,
@@ -278,14 +282,46 @@ export async function composeReplyWithEnrichment(
     );
   }
 
-  // F4: text is unchanged so the original chunks from composeReply are still
-  // accurate — no re-chunk required. Use the existing chunk array.
+  // F4: grail-ref-guard text is unchanged — original chunks would still be
+  // accurate. But B2a (V0.7-A.3 hotfix 2026-05-02) introduces conditional
+  // text mutation: when the env-aware composer attaches image bytes, strip
+  // the corresponding URL paste from the LLM voice prose. Operator's prod
+  // run had attached=1 but Discord automod still deleted the message
+  // because the URL was inline in voice text. Bytes-on-the-wire is the
+  // contract; URL inline defeats the env-aware design.
   const grailCandidates = extractGrailCandidates(captured);
   const payload = await composeWithImage(inspected.text, grailCandidates);
 
+  let finalContent = inspected.text;
+  let finalChunks = result.chunks;
+  if (payload.files && payload.files.length > 0) {
+    // Strip ONLY URLs we actually attached — derived from the same
+    // candidates that fed composeWithImage. URLs not in the attached set
+    // (e.g. references the LLM made to other grail images we did NOT
+    // attach) are preserved as-is.
+    const attachedUrls = extractAttachedUrls(grailCandidates).slice(
+      0,
+      payload.files.length,
+    );
+    const stripped = stripAttachedImageUrls(inspected.text, attachedUrls);
+    if (stripped !== inspected.text) {
+      console.warn(
+        `[embed-with-image] stripped ${attachedUrls.length} inline image URL(s) from reply text ` +
+          `(character=${args.character.id})`,
+      );
+      finalContent = stripped;
+      // Re-chunk the stripped text — boundaries shift when text mutates.
+      finalChunks = splitForDiscord(stripped, DISCORD_CHAR_LIMIT);
+      // Update payload.content too — webhook layer reads this for the
+      // text portion of the multipart payload.
+      payload.content = stripped;
+    }
+  }
+
   return {
     ...result,
-    content: inspected.text,
+    content: finalContent,
+    chunks: finalChunks,
     payload,
     toolResults: captured,
     grailRefValidation: inspected.validation,
