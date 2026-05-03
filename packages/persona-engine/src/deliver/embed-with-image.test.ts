@@ -12,7 +12,7 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach, mock } from 'bun:test';
-import { composeWithImage } from './embed-with-image.ts';
+import { composeWithImage, isAllowedImageUrl } from './embed-with-image.ts';
 
 const PNG_MAGIC = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
@@ -173,5 +173,129 @@ describe('composeWithImage · maxAttachments clamp', () => {
 
     expect(result.files).toBeDefined();
     expect(result.files!.length).toBe(2);
+  });
+});
+
+describe('isAllowedImageUrl · F5 SSRF allowlist', () => {
+  test('https on canonical CDN allowed', () => {
+    expect(isAllowedImageUrl('https://assets.0xhoneyjar.xyz/x.png')).toBe(true);
+  });
+
+  test('http scheme rejected', () => {
+    expect(isAllowedImageUrl('http://assets.0xhoneyjar.xyz/x.png')).toBe(false);
+  });
+
+  test('file: scheme rejected', () => {
+    expect(isAllowedImageUrl('file:///etc/passwd')).toBe(false);
+  });
+
+  test('data: scheme rejected', () => {
+    expect(isAllowedImageUrl('data:image/png;base64,iVBOR=')).toBe(false);
+  });
+
+  test('cloud-metadata IP (link-local) rejected', () => {
+    expect(isAllowedImageUrl('http://169.254.169.254/latest/meta-data/')).toBe(
+      false,
+    );
+  });
+
+  test('localhost rejected', () => {
+    expect(isAllowedImageUrl('http://localhost:8080/leak')).toBe(false);
+  });
+
+  test('arbitrary attacker host on https rejected', () => {
+    expect(isAllowedImageUrl('https://attacker.example/x.png')).toBe(false);
+  });
+
+  test('malformed URL returns false (no throw)', () => {
+    expect(isAllowedImageUrl('not a url')).toBe(false);
+    expect(isAllowedImageUrl('')).toBe(false);
+  });
+});
+
+describe('composeWithImage · F5 SSRF graceful degrade', () => {
+  test('disallowed scheme (file:) returns text-only', async () => {
+    globalThis.fetch = mockFetchOk();
+    const result = await composeWithImage(
+      'reply.',
+      [{ ref: '@g876', image: 'file:///etc/passwd' }],
+    );
+    expect(result.content).toBe('reply.');
+    expect(result.files).toBeUndefined();
+  });
+
+  test('disallowed host (localhost) returns text-only', async () => {
+    globalThis.fetch = mockFetchOk();
+    const result = await composeWithImage(
+      'reply.',
+      [{ ref: '@g876', image: 'http://localhost:8080/leak' }],
+    );
+    expect(result.content).toBe('reply.');
+    expect(result.files).toBeUndefined();
+  });
+
+  test('disallowed host (cloud metadata IP) returns text-only', async () => {
+    globalThis.fetch = mockFetchOk();
+    const result = await composeWithImage(
+      'reply.',
+      [{ ref: '@g876', image: 'http://169.254.169.254/' }],
+    );
+    expect(result.content).toBe('reply.');
+    expect(result.files).toBeUndefined();
+  });
+
+  test('redirect-error from fetch returns text-only (mock throw)', async () => {
+    // Simulates undici throwing on a 301/302 because fetch() received
+    // `redirect: 'error'`. F5 mitigation: even if an allowlisted host
+    // tried to redirect, fetch would throw and we degrade gracefully.
+    globalThis.fetch = mock(async () => {
+      throw new TypeError('unexpected redirect');
+    }) as unknown as typeof globalThis.fetch;
+    const result = await composeWithImage(
+      'reply.',
+      [{ ref: '@g876', image: 'https://assets.0xhoneyjar.xyz/x.png' }],
+    );
+    expect(result.content).toBe('reply.');
+    expect(result.files).toBeUndefined();
+  });
+});
+
+describe('composeWithImage · F6 size cap', () => {
+  test('content-length above cap returns text-only', async () => {
+    globalThis.fetch = mock(async () => {
+      return new Response(PNG_MAGIC as unknown as BodyInit, {
+        status: 200,
+        headers: {
+          'Content-Type': 'image/png',
+          'Content-Length': String(9 * 1024 * 1024), // 9MB > 8MB cap
+        },
+      });
+    }) as unknown as typeof globalThis.fetch;
+
+    const result = await composeWithImage(
+      'reply.',
+      [{ ref: '@g876', image: 'https://assets.0xhoneyjar.xyz/big.png' }],
+    );
+    expect(result.content).toBe('reply.');
+    expect(result.files).toBeUndefined();
+  });
+
+  test('post-fetch byteLength above cap returns text-only (no Content-Length)', async () => {
+    // Server omits Content-Length but ships >8MB body. The post-arrayBuffer
+    // belt-and-braces check should trip and degrade.
+    const oversize = new Uint8Array(9 * 1024 * 1024); // 9MB, all zeros
+    globalThis.fetch = mock(async () => {
+      return new Response(oversize as unknown as BodyInit, {
+        status: 200,
+        headers: { 'Content-Type': 'image/png' }, // no Content-Length
+      });
+    }) as unknown as typeof globalThis.fetch;
+
+    const result = await composeWithImage(
+      'reply.',
+      [{ ref: '@g876', image: 'https://assets.0xhoneyjar.xyz/big.png' }],
+    );
+    expect(result.content).toBe('reply.');
+    expect(result.files).toBeUndefined();
   });
 });
