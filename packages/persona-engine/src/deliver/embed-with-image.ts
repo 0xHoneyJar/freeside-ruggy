@@ -236,6 +236,10 @@ async function fetchAttachment(
 }
 
 function inferExtension(url: string): string {
+  // Bridgebuilder F6 (LOW · 2026-05-02): codex returns canonical paths
+  // with no query-string suffix. The `split('?')` + `split('#')` are
+  // defensive belt-and-braces in case future grail substrates introduce
+  // signed-URL params or fragment anchors. Tunable; not a blocker.
   const tail = url.split('?')[0]?.split('#')[0] ?? '';
   const dot = tail.lastIndexOf('.');
   if (dot < 0) return 'png';
