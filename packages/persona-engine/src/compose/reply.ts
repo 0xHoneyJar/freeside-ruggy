@@ -48,6 +48,10 @@ import {
   type EnrichedPayload,
 } from '../deliver/embed-with-image.ts';
 import {
+  appendGrailRefGuardFooter,
+  type GrailRefValidation,
+} from '../deliver/grail-ref-guard.ts';
+import {
   appendToLedger,
   getLedgerSnapshot,
   type LedgerEntry,
@@ -220,13 +224,19 @@ export interface EnrichedReplyResult extends ReplyComposeResult {
   payload: EnrichedPayload;
   /** Tool results captured during the run (in stream order). */
   toolResults: ToolResultEvent[];
+  /** V0.7-A.3 grail-ref guard validation (spec §11.2 — V1 warning-only). */
+  grailRefValidation: GrailRefValidation;
 }
 
 /**
  * V0.7-A.3 sibling composer (additive surface — preserves `composeReply`
  * contract per spec §4.1 option C). Wraps `composeReply` + collects tool
- * results from the SDK loop, then runs `composeWithImage` to build a
- * webhook-ready payload with optional grail image attachments.
+ * results from the SDK loop, then:
+ *   1. runs `composeWithImage` to build a webhook payload with optional
+ *      grail image attachments (env-aware bytes-on-the-wire pattern)
+ *   2. runs `validateGrailRefs` (spec §11.2) on the reply text — V1
+ *      appends a warning footer when the LLM cited unverified grail
+ *      refs; V1.5 will strip + reinforce persona instruction.
  *
  * Returns null when `composeReply` does — empty/no-result is the same
  * shape upstream.
@@ -250,10 +260,72 @@ export async function composeReplyWithEnrichment(
   });
   if (!result) return null;
 
-  const grailCandidates = extractGrailCandidates(captured);
-  const payload = await composeWithImage(result.content, grailCandidates);
+  // V0.7-A.3 §11.2: post-process for grail-ref hallucinations. Refs that
+  // arrived in this session's tool results are session-canonical (allowed
+  // even if not in the V1 hardcoded canonical set); other refs fall to
+  // invalid + warning footer. V1 is warning-only by design — observable
+  // signal for V1.5 corpus expansion without blocking voice delivery.
+  const sessionGrailRefs = extractSessionGrailRefs(captured);
+  const guarded = appendGrailRefGuardFooter(result.content, sessionGrailRefs);
+  if (guarded.validation.invalid.length > 0) {
+    console.warn(
+      `compose: ${args.character.id}/chat grail-ref-guard flagged ` +
+        `unverified refs ${JSON.stringify(guarded.validation.invalid)} ` +
+        `(session refs: ${JSON.stringify(Array.from(sessionGrailRefs))})`,
+    );
+  }
+  // Re-chunk after footer append in case the warning pushes any chunk over
+  // Discord's 2000-char limit (rare but possible at the boundary).
+  const guardedChunks = splitForDiscord(guarded.text, DISCORD_CHAR_LIMIT);
 
-  return { ...result, payload, toolResults: captured };
+  // Image attachment uses the post-guard text as caption (footer rides
+  // along when present). Caption could grow with footer; payload.content
+  // is the same source-of-truth as guardedChunks joined.
+  const grailCandidates = extractGrailCandidates(captured);
+  const payload = await composeWithImage(guarded.text, grailCandidates);
+
+  return {
+    ...result,
+    content: guarded.text,
+    chunks: guardedChunks,
+    payload,
+    toolResults: captured,
+    grailRefValidation: guarded.validation,
+  };
+}
+
+/**
+ * Pull `@g<id>` / `#<id>` shaped strings out of the captured tool result
+ * envelopes so the grail-ref-guard's sessionRefs override can permit them
+ * even when they're outside the V1 hardcoded canonical set. Conservative:
+ * only mines `ref` fields and the top-level `id` field if string-shaped.
+ */
+function extractSessionGrailRefs(events: ToolResultEvent[]): string[] {
+  const refs = new Set<string>();
+  for (const event of events) {
+    if (!CODEX_IMAGE_TOOL_NAMES.has(event.name)) continue;
+    if (event.parsed === undefined || event.parsed === null) continue;
+    collectRefsFromValue(event.parsed, refs);
+  }
+  return Array.from(refs);
+}
+
+function collectRefsFromValue(value: unknown, out: Set<string>): void {
+  if (typeof value !== 'object' || value === null) return;
+  if (Array.isArray(value)) {
+    for (const v of value) collectRefsFromValue(v, out);
+    return;
+  }
+  const o = value as Record<string, unknown>;
+  if (typeof o.ref === 'string' && /^@?g?\d+$/.test(o.ref)) {
+    out.add(o.ref);
+  }
+  if (typeof o.id === 'string' && /^\d+$/.test(o.id)) {
+    out.add(o.id);
+  }
+  for (const key of ['result', 'grail', 'mibera', 'data', 'results', 'matches', 'items']) {
+    if (key in o) collectRefsFromValue(o[key], out);
+  }
 }
 
 /**

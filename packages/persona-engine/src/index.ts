@@ -72,6 +72,14 @@ export type {
   ComposeWithImageOptions,
 } from './deliver/embed-with-image.ts';
 
+// V0.7-A.3 anti-hallucination guard (spec §11.2 — V1 warning-only footer).
+export {
+  validateGrailRefs,
+  appendGrailRefGuardFooter,
+  GRAIL_REF_GUARD_FOOTER,
+} from './deliver/grail-ref-guard.ts';
+export type { GrailRefValidation } from './deliver/grail-ref-guard.ts';
+
 // Chat-mode routing helpers (V0.7-A.4 surface-completeness test surface)
 export { shouldUseOrchestrator, resolveChatProvider } from './compose/reply.ts';
 export type { ChatProvider } from './compose/reply.ts';
