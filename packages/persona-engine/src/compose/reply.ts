@@ -48,7 +48,7 @@ import {
   type EnrichedPayload,
 } from '../deliver/embed-with-image.ts';
 import {
-  appendGrailRefGuardFooter,
+  inspectGrailRefs,
   type GrailRefValidation,
 } from '../deliver/grail-ref-guard.ts';
 import {
@@ -263,34 +263,32 @@ export async function composeReplyWithEnrichment(
   // V0.7-A.3 §11.2: post-process for grail-ref hallucinations. Refs that
   // arrived in this session's tool results are session-canonical (allowed
   // even if not in the V1 hardcoded canonical set); other refs fall to
-  // invalid + warning footer. V1 is warning-only by design — observable
-  // signal for V1.5 corpus expansion without blocking voice delivery.
+  // invalid → operator-only telemetry (warning log + structured field on
+  // EnrichedReplyResult.grailRefValidation). Bridgebuilder F4 (2026-05-02):
+  // V1 is telemetry-only by design — no user-visible footer; persona
+  // illusion is preserved. V1.5 may add an in-voice signal (character
+  // refusing the reach) per spec §11.2.
   const sessionGrailRefs = extractSessionGrailRefs(captured);
-  const guarded = appendGrailRefGuardFooter(result.content, sessionGrailRefs);
-  if (guarded.validation.invalid.length > 0) {
+  const inspected = inspectGrailRefs(result.content, sessionGrailRefs);
+  if (inspected.validation.invalid.length > 0) {
     console.warn(
-      `compose: ${args.character.id}/chat grail-ref-guard flagged ` +
-        `unverified refs ${JSON.stringify(guarded.validation.invalid)} ` +
+      `[grail-ref-guard] ${args.character.id}/chat flagged unverified refs ` +
+        `${JSON.stringify(inspected.validation.invalid)} ` +
         `(session refs: ${JSON.stringify(Array.from(sessionGrailRefs))})`,
     );
   }
-  // Re-chunk after footer append in case the warning pushes any chunk over
-  // Discord's 2000-char limit (rare but possible at the boundary).
-  const guardedChunks = splitForDiscord(guarded.text, DISCORD_CHAR_LIMIT);
 
-  // Image attachment uses the post-guard text as caption (footer rides
-  // along when present). Caption could grow with footer; payload.content
-  // is the same source-of-truth as guardedChunks joined.
+  // F4: text is unchanged so the original chunks from composeReply are still
+  // accurate — no re-chunk required. Use the existing chunk array.
   const grailCandidates = extractGrailCandidates(captured);
-  const payload = await composeWithImage(guarded.text, grailCandidates);
+  const payload = await composeWithImage(inspected.text, grailCandidates);
 
   return {
     ...result,
-    content: guarded.text,
-    chunks: guardedChunks,
+    content: inspected.text,
     payload,
     toolResults: captured,
-    grailRefValidation: guarded.validation,
+    grailRefValidation: inspected.validation,
   };
 }
 

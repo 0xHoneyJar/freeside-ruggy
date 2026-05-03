@@ -1,19 +1,19 @@
 /**
- * grail-ref-guard tests · V0.7-A.3 sprint Task 1.9.
+ * grail-ref-guard tests · V0.7-A.3 sprint Task 1.9 + bridgebuilder F1/F4
+ * triage 2026-05-02.
  *
  * Verifies:
  *   - canonical refs (`@g876`) are recognized as valid
  *   - unknown refs (`@g99999`) flagged as invalid
- *   - mixed canonical/unknown/hash refs partition correctly
+ *   - F1: bare `#<id>` form is no longer recognized (issue-ref noise)
  *   - text with no refs returns empty lists
  *   - sessionRefs override allows per-session-canonical refs
- *   - footer composer appends warning on invalid > 0, leaves text alone otherwise
+ *   - F4: inspectGrailRefs returns text UNCHANGED + validation (no footer)
  */
 
 import { describe, test, expect } from 'bun:test';
 import {
-  appendGrailRefGuardFooter,
-  GRAIL_REF_GUARD_FOOTER,
+  inspectGrailRefs,
   validateGrailRefs,
 } from './grail-ref-guard.ts';
 
@@ -46,12 +46,12 @@ describe('validateGrailRefs · unknown refs', () => {
 });
 
 describe('validateGrailRefs · mixed refs', () => {
-  test('canonical + unknown + hash partition correctly', () => {
+  test('canonical + unknown @g refs partition correctly', () => {
     const result = validateGrailRefs(
-      'compare @g876 with @g99999 and #4488',
+      'compare @g876 with @g99999 and @g4488',
     );
     expect(result.valid).toContain('@g876');
-    expect(result.valid).toContain('#4488');
+    expect(result.valid).toContain('@g4488');
     expect(result.invalid).toContain('@g99999');
     expect(result.valid.length).toBe(2);
     expect(result.invalid.length).toBe(1);
@@ -63,12 +63,28 @@ describe('validateGrailRefs · mixed refs', () => {
     );
     expect(result.valid).toEqual(['@g876']);
   });
+});
 
-  test('@g876 and #876 are distinct citation forms', () => {
+describe('validateGrailRefs · F1 — `#<id>` form ignored', () => {
+  // Bridgebuilder F1 (2026-05-02): the bare `#<id>` shape was overly broad
+  // and false-positived on issue refs (`#123`), markdown anchors, and
+  // ordinal lists. Only `@g<id>` is recognized — `@g` is the disambiguator.
+  test('bare #876 is ignored (issue-ref / channel-mention shape)', () => {
+    const result = validateGrailRefs('see #876 fixed in PR #4488');
+    expect(result.valid).toEqual([]);
+    expect(result.invalid).toEqual([]);
+  });
+
+  test('@g876 IS recognized when present alongside ignored #876', () => {
     const result = validateGrailRefs('@g876 vs #876');
-    expect(result.valid).toContain('@g876');
-    expect(result.valid).toContain('#876');
-    expect(result.valid.length).toBe(2);
+    expect(result.valid).toEqual(['@g876']);
+    expect(result.invalid).toEqual([]);
+  });
+
+  test('plain issue ref like "#123" never reaches validation buckets', () => {
+    const result = validateGrailRefs('this fixes #123 and refs #4488');
+    expect(result.valid).toEqual([]);
+    expect(result.invalid).toEqual([]);
   });
 });
 
@@ -110,25 +126,42 @@ describe('validateGrailRefs · sessionRefs override', () => {
   });
 });
 
-describe('appendGrailRefGuardFooter', () => {
-  test('appends footer when invalid refs surfaced', () => {
-    const result = appendGrailRefGuardFooter('see @g99999');
-    expect(result.text).toContain('@g99999');
-    expect(result.text).toContain('KEEPER: contains unverified ref');
-    expect(result.text.endsWith(GRAIL_REF_GUARD_FOOTER)).toBe(true);
+describe('inspectGrailRefs · F4 — telemetry, not user-visible footer', () => {
+  // Bridgebuilder F4 (2026-05-02): the previous `appendGrailRefGuardFooter`
+  // appended an engineering-jargon footer to user-facing Discord text.
+  // V1 contract is now: text returned UNCHANGED, validation is operator-
+  // only telemetry. Asserts the footer is gone in all branches.
+
+  test('text is unchanged when invalid refs surfaced — telemetry only', () => {
+    const original = 'see @g99999';
+    const result = inspectGrailRefs(original);
+    expect(result.text).toBe(original);
+    expect(result.text).not.toContain('KEEPER');
+    expect(result.text).not.toContain('unverified');
+    expect(result.text).not.toContain('corpus signal');
     expect(result.validation.invalid).toEqual(['@g99999']);
   });
 
-  test('leaves text unchanged when all refs canonical', () => {
+  test('text unchanged when all refs canonical', () => {
     const original = 'see @g876 and @g4488';
-    const result = appendGrailRefGuardFooter(original);
+    const result = inspectGrailRefs(original);
     expect(result.text).toBe(original);
     expect(result.validation.invalid).toEqual([]);
   });
 
-  test('leaves text unchanged when no refs at all', () => {
+  test('text unchanged when no refs at all', () => {
     const original = 'the chain has held.';
-    const result = appendGrailRefGuardFooter(original);
+    const result = inspectGrailRefs(original);
     expect(result.text).toBe(original);
+    expect(result.validation.valid).toEqual([]);
+    expect(result.validation.invalid).toEqual([]);
+  });
+
+  test('sessionRefs override surfaces in validation, text still unchanged', () => {
+    const original = 'see @g7777';
+    const result = inspectGrailRefs(original, ['7777']);
+    expect(result.text).toBe(original);
+    expect(result.validation.valid).toEqual(['@g7777']);
+    expect(result.validation.invalid).toEqual([]);
   });
 });

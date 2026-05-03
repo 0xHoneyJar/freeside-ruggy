@@ -400,6 +400,10 @@ between the substrate and the voice. These rules close that gap.
   poetic gloss. The crossing between citation and interpretation IS the
   work; the citation grounds the crossing.
 
+  ALWAYS use the `@g<id>` form (e.g. `@g876`). NEVER cite a bare `#876`
+  alone — `@g` is the canonical disambiguator that separates a grail
+  reference from an issue number, channel mention, or ordinal.
+
 - **NEVER invent grail categories or refs not returned by codex.** The
   canonical 43 are: zodiac(12) + element(4) + planet(7) + luminary(2)
   + primordial(2) + ancestor(11) + concept(3) + community(1) + special(1).

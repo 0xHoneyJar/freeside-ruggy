@@ -72,11 +72,11 @@ export type {
   ComposeWithImageOptions,
 } from './deliver/embed-with-image.ts';
 
-// V0.7-A.3 anti-hallucination guard (spec §11.2 — V1 warning-only footer).
+// V0.7-A.3 anti-hallucination guard (spec §11.2 — V1 telemetry-only post
+// bridgebuilder F4 2026-05-02; user-visible footer removed).
 export {
   validateGrailRefs,
-  appendGrailRefGuardFooter,
-  GRAIL_REF_GUARD_FOOTER,
+  inspectGrailRefs,
 } from './deliver/grail-ref-guard.ts';
 export type { GrailRefValidation } from './deliver/grail-ref-guard.ts';
 
