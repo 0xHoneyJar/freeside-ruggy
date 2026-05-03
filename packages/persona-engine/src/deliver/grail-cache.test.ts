@@ -238,16 +238,16 @@ describe('initGrailCache · failures are non-blocking', () => {
   });
 });
 
-describe('CANONICAL_GRAIL_URLS · V0.7-A.4 patch (hermes 403 → mercury fix)', () => {
-  test('mercury.png is in the canonical V1 list (Roman name for Hermes · #4488)', () => {
-    // V0.7-A.4 patch (2026-05-03): hermes.PNG returned 403 from S3 in PROD
-    // (file genuinely doesn't exist). Replaced with mercury.png (Roman name
-    // for the same archetype, grail #4488 Satoshi-as-Hermes) — verified 200
-    // at 6.8MB. Cycle B URL canonicalization will replace this hardcoded
-    // patch with substrate-discovered URLs.
+describe('CANONICAL_GRAIL_URLS · V0.7-A.4 patch (hermes 403 → satoshi-as-hermes fix)', () => {
+  test('satoshi-as-hermes.png is in the canonical V1 list (#4488)', () => {
+    // V0.7-A.4 patch (2026-05-03): hermes.PNG returned 403 from S3 in PROD.
+    // Hotfix later that day flipped to canonical satoshi-as-hermes.png per
+    // apps/character-satoshi/persona.md + codex-anchors.md (mercury was a
+    // PROPERTY of #4488 · not the filename). Verified 200 at 7.4MB. Cycle B
+    // URL canonicalization will replace this hardcoded patch.
     const urls = _canonicalGrailUrlsForTests();
     expect(
-      urls.includes('https://assets.0xhoneyjar.xyz/Mibera/grails/mercury.png'),
+      urls.includes('https://assets.0xhoneyjar.xyz/Mibera/grails/satoshi-as-hermes.png'),
     ).toBe(true);
   });
 

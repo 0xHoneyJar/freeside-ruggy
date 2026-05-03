@@ -118,9 +118,11 @@ const CANONICAL_GRAIL_URLS: ReadonlyArray<string> = [
   // 876  Black Hole (concept) — V0.7-A.3 SC1 reference
   'https://assets.0xhoneyjar.xyz/Mibera/grails/black-hole.png',
   // 4488 Satoshi-as-Hermes (ancestor) — V0.7-A.3 SC2 reference
-  // V0.7-A.4 patch: hermes.PNG was 403; mercury.png (Roman name for Hermes)
-  // verified 200 · Cycle B URL canonicalization will replace this
-  'https://assets.0xhoneyjar.xyz/Mibera/grails/mercury.png',
+  // hotfix 2026-05-03: Cycle A initially used mercury.png (wrong file ·
+  // mercury is a PROPERTY of #4488, not the filename). Canonical per
+  // apps/character-satoshi/persona.md:7,11 + codex-anchors.md is
+  // satoshi-as-hermes.png. Cycle B URL canonicalization replaces this.
+  'https://assets.0xhoneyjar.xyz/Mibera/grails/satoshi-as-hermes.png',
   // 235  Scorpio (zodiac) — V0.7-A.3 §11 transformation regression
   'https://assets.0xhoneyjar.xyz/Mibera/grails/scorpio.png',
   // 6458 Fire (element) — V0.7-A.3 §11 transformation regression

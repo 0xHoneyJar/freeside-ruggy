@@ -94,9 +94,10 @@ describe('composeWithImage · happy path', () => {
         {
           ref: '@g4488',
           name: 'Satoshi-as-Hermes',
-          // V0.7-A.4 patch (2026-05-03): was hermes.PNG (403); flipped to
-          // mercury.png to mirror CANONICAL_GRAIL_URLS source change.
-          image_url: 'https://assets.0xhoneyjar.xyz/Mibera/grails/mercury.png',
+          // V0.7-A.4 patch (2026-05-03): was hermes.PNG (403); hotfix flipped
+          // to canonical satoshi-as-hermes.png per persona.md + codex-anchors
+          // (mercury was wrong file · property of #4488 not the filename).
+          image_url: 'https://assets.0xhoneyjar.xyz/Mibera/grails/satoshi-as-hermes.png',
         },
       ],
     );
@@ -106,7 +107,7 @@ describe('composeWithImage · happy path', () => {
     expect(result.files![0]!.name).toBe('g4488.png');
     // F10 polish: attachedUrls reflects image_url alt-key URL too
     expect(result.attachedUrls).toEqual([
-      'https://assets.0xhoneyjar.xyz/Mibera/grails/mercury.png',
+      'https://assets.0xhoneyjar.xyz/Mibera/grails/satoshi-as-hermes.png',
     ]);
   });
 });
